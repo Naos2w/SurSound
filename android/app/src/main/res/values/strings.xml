@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">SurSound Capture PoC</string>
+    <string name="title">SurSound — audio capture PoC</string>
+    <string name="description">Diagnostic only. Grant Android playback-capture consent, then play permitted audio in another app. No microphone input, screen frames, storage or network transmission.</string>
+    <string name="start_capture">Start capture</string>
+    <string name="stop_capture">Stop capture</string>
+    <string name="notification_title">SurSound is capturing permitted playback</string>
+    <string name="notification_text">Audio diagnostics only. Tap Stop to end the session.</string>
+    <string name="channel_name">Audio capture</string>
+</resources>
