@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches:
+      - main
+      - develop
+      - 'release/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate project baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in README.md AGENTS.md CONTRIBUTING.md CHANGELOG.md docs/requirements.md docs/architecture.md docs/git-workflow.md tasks/todo.md .github/PULL_REQUEST_TEMPLATE.md; do
+            test -s "$file"
+          done
+          git diff --check HEAD
+          echo "Bootstrap structure verified; application tests not yet implemented."

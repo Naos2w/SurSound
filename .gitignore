@@ -1,0 +1,16 @@
+node_modules/
+.gradle/
+**/build/
+**/DerivedData/
+**/Pods/
+**/.idea/
+**/local.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
