@@ -10,6 +10,23 @@ class LanPacketCodecTest {
     private val key = LanPacketCodec.parseKey("00112233445566778899aabbccddeeff")
     private val pcm = ByteArray(LanPacketCodec.PCM_BYTES) { (it % 251).toByte() }
 
+    @Test fun sharedWireFormatGoldenVector() {
+        val header = java.nio.ByteBuffer.allocate(17)
+            .putInt(0x53535030).put(1.toByte()).putLong(0x0102030405060708L).putInt(42).array()
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(128, header.copyOfRange(5, 17)))
+        cipher.updateAAD(header)
+        val packet = header + cipher.doFinal(pcm)
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(packet)
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        assertEquals("0d9cb39a5141757e2f4903d4ba8762840cbb82416acb5ccdea12496bc2259535", digest)
+        val decoded = LanPacketCodec.Decoder(key).decode(packet)!!
+        assertEquals(0x0102030405060708L, decoded.session)
+        assertEquals(42, decoded.sequence)
+        assertArrayEquals(pcm, decoded.pcm)
+    }
+
     @Test fun authenticatedRoundTripAndUniqueNonce() {
         val encoder = LanPacketCodec.Encoder(key)
         val decoder = LanPacketCodec.Decoder(key)

@@ -23,6 +23,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import java.net.InetAddress
 
 /** Owns the consent token and the recording lifecycle; never records screen pixels or microphone. */
 class CaptureService : Service() {
@@ -30,6 +31,7 @@ class CaptureService : Service() {
     private lateinit var thread: HandlerThread
     private lateinit var worker: Handler
     private var session: Session? = null
+    private data class ShareTarget(val peer: InetAddress, val key: ByteArray)
 
     override fun onCreate() {
         super.onCreate()
@@ -45,23 +47,44 @@ class CaptureService : Service() {
             if (current == null) stopSelf() else current.requestStop()
             return START_NOT_STICKY
         }
-        if (session != null) return START_NOT_STICKY
+        val suppliedKey = intent?.getByteArrayExtra(EXTRA_SHARE_KEY)
+        val suppliedPeer = intent?.getStringExtra(EXTRA_SHARE_PEER)
+        intent?.removeExtra(EXTRA_SHARE_KEY)
+        intent?.removeExtra(EXTRA_SHARE_PEER)
+        if (session != null) {
+            suppliedKey?.fill(0)
+            return START_NOT_STICKY
+        }
         val consent = intent?.let { getConsent(it) }
         if (intent == null || intent.action != ACTION_START || consent == null ||
             intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED) != Activity.RESULT_OK) {
+            suppliedKey?.fill(0)
             stopSelf()
             return START_NOT_STICKY
         }
 
         val owner = CaptureState.begin()
         try {
-            startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-            val current = Session(owner)
+            val target = if (suppliedKey != null || suppliedPeer != null) {
+                require(suppliedKey != null && suppliedKey.size == 16 && suppliedPeer != null)
+                ShareTarget(LanPacketCodec.localPeer(suppliedPeer), suppliedKey)
+            } else null
+            val notice = notification(target != null)
+            if (target != null) {
+                val manager = requireNotNull(getSystemService(NotificationManager::class.java))
+                check(manager.areNotificationsEnabled() &&
+                    manager.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE) {
+                    "Enable capture notifications before sharing."
+                }
+            }
+            startForeground(NOTIFICATION_ID, notice, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            val current = Session(owner, target)
             session = current
             worker.post { current.start(consent) }
         } catch (e: RuntimeException) {
+            suppliedKey?.fill(0)
             CaptureState.update(owner, CaptureState.Snapshot(CaptureState.Phase.ERROR,
-                "Foreground service rejected: " + e.javaClass.simpleName))
+                "Unable to start capture or share: " + (e.message ?: e.javaClass.simpleName)))
             stopSelf()
         }
         return START_NOT_STICKY
@@ -83,7 +106,7 @@ class CaptureService : Service() {
         if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         else intent.getParcelableExtra(EXTRA_RESULT_DATA)
 
-    private fun notification(): Notification {
+    private fun notification(sharing: Boolean): Notification {
         requireNotNull(getSystemService(NotificationManager::class.java)).createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW)
         )
@@ -93,8 +116,8 @@ class CaptureService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentTitle(getString(if (sharing) R.string.share_notification_title else R.string.notification_title))
+            .setContentText(getString(if (sharing) R.string.share_notification_text else R.string.notification_text))
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_delete, getString(R.string.stop_capture), stop).build())
@@ -102,7 +125,12 @@ class CaptureService : Service() {
     }
 
     /** All projection/record operations and callbacks run on the same worker looper. */
-    private inner class Session(private val owner: Long) {
+    private inner class Session(private val owner: Long, private val target: ShareTarget?) {
+        private var sender: CaptureShareSender? = null
+        private val shareTimeout = Runnable {
+            finish("30-second LAN sharing limit reached.")
+            main.post { stopSelf() }
+        }
         private var projection: MediaProjection? = null
         private var record: AudioRecord? = null
         private var finished = false
@@ -121,6 +149,7 @@ class CaptureService : Service() {
             override fun run() {
                 if (finished) return
                 try {
+                    sender?.failure?.let { fail(it); return }
                     val input = record ?: error("AudioRecord unavailable")
                     val count = input.read(pcm, 0, pcm.size, AudioRecord.READ_NON_BLOCKING)
                     if (count < 0) {
@@ -129,10 +158,13 @@ class CaptureService : Service() {
                     }
                     if (count > 0) {
                         latest = meter.consume(pcm, count)
+                        sender?.offer(pcm, count)
                         lastRead = SystemClock.elapsedRealtimeNanos()
                         if (lastRead - lastPublish >= 100_000_000L) {
                             lastPublish = lastRead
-                            publish(CaptureState.Phase.CAPTURING, "Reading permitted playback audio")
+                            val message = sender?.let { "Sharing permitted playback over LAN • sent: " + it.sent + " • dropped: " + it.dropped }
+                                ?: "Reading permitted playback audio"
+                            publish(CaptureState.Phase.CAPTURING, message)
                         }
                         pcm.fill(0, 0, count)
                     }
@@ -177,7 +209,11 @@ class CaptureService : Service() {
                 check(input.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord not initialized" }
                 input.startRecording()
                 check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Recording not started" }
-                publish(CaptureState.Phase.CAPTURING, "Waiting for permitted playback samples")
+                if (target != null) {
+                    sender = CaptureShareSender(target.peer, target.key)
+                    worker.postDelayed(shareTimeout, 30_000L)
+                }
+                publish(CaptureState.Phase.CAPTURING, if (sender != null) "LAN sharing active (30-second limit)" else "Waiting for permitted playback samples")
                 worker.post(readNext)
             } catch (e: RuntimeException) {
                 fail("Capture setup failed: " + e.javaClass.simpleName + ": " + (e.message ?: ""))
@@ -207,6 +243,10 @@ class CaptureService : Service() {
             if (finished) return
             finished = true
             worker.removeCallbacks(readNext)
+            worker.removeCallbacks(shareTimeout)
+            sender?.close()
+            sender = null
+            target?.key?.fill(0)
             record?.let { input ->
                 runCatching { if (input.recordingState == AudioRecord.RECORDSTATE_RECORDING) input.stop() }
                 runCatching { input.release() }
@@ -227,6 +267,8 @@ class CaptureService : Service() {
         const val ACTION_STOP = "com.naos.sursound.STOP"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_SHARE_PEER = "share_peer"
+        const val EXTRA_SHARE_KEY = "share_key"
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val SAMPLE_RATE = 48_000

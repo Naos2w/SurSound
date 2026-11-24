@@ -65,3 +65,30 @@ jobs:
             android/app/build/reports/tests/
             android/app/build/reports/lint-results-debug.*
             android/app/build/test-results/
+
+  ios:
+    name: ios-receiver
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate native iOS project
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Build and test on an available iPhone simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
+          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundReceiver -configuration Debug -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO -resultBundlePath TestResults.xcresult test
+      - name: Upload iOS test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-receiver-results
+          path: ios/TestResults.xcresult
+          if-no-files-found: warn

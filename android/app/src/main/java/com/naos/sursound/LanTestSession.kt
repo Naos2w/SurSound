@@ -113,7 +113,7 @@ internal class LanTestSession private constructor() {
                 var rejected = 0L
                 var outputDrops = 0L
                 var playing = false
-                status = Status("Listening for authenticated test packets")
+                status = Status("Listening for authenticated audio packets")
                 while (!stopped.get() && System.nanoTime() - start < 45_000_000_000L) {
                     datagram.length = storage.size
                     try { udp.receive(datagram) } catch (_: SocketTimeoutException) { continue }
@@ -134,7 +134,7 @@ internal class LanTestSession private constructor() {
                     check(written >= 0) { "AudioTrack write error" }
                     if (written != size) outputDrops++
                     count++
-                    status = Status("Playing authenticated test tone", count, rejected + outputDrops + replay.missing)
+                    status = Status("Playing authenticated LAN audio", count, rejected + outputDrops + replay.missing)
                 }
             } finally {
                 runCatching { if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop() }

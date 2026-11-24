@@ -12,7 +12,7 @@ From android/: `gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
 4. Repeat consent, cancellation, permission denial, OS revocation, notification stop, backgrounding and lock screen. Test protected/denied sources without bypassing policy.
 5. Record Android model, OS version, source, result and failures in the existing TODO.
 
-The capture path does not transmit audio, persist audio files, use microphone input, create a virtual display or read screen frames. PCM is kept only in a reusable in-memory buffer and cleared after statistics are computed. Timestamp is the local read observation, not a presentation timestamp or sync measurement.
+The capture-only diagnostic does not transmit audio. Neither mode persists audio files, uses microphone input, creates a virtual display or reads screen frames. PCM is kept only in a reusable in-memory buffer and cleared after statistics are computed. Timestamp is the local read observation, not a presentation timestamp or sync measurement.
 
 ## LAN test-tone acceptance (not yet verified on devices)
 1. Connect two Android phones to the same Wi-Fi or hotspot. Open LAN test tone and note each local IPv4 address. Enter the other phone’s private address on each device.
@@ -20,7 +20,13 @@ The capture path does not transmit audio, persist audio files, use microphone in
 3. Stop either test or leave the screen. Sender is bounded to 30 seconds, listener to 45 seconds. Repeat with a wrong key; playback should not begin. Verify both phones on real Wi-Fi and hotspot.
 4. Record the device/OS, connectivity, packet counts, drops and actual audible result in tasks/todo.md.
 
-LAN PoC uses UDP port 39771, private/link-local IPv4 peers, AES-128-GCM with authenticated headers, per-session nonce prefix and packet sequence. Each packet contains 5 ms of stereo PCM16, 48 kHz (993 bytes including header/tag). First authenticated session is locked; stale, duplicate and foreign packets are rejected. Manual fresh-key pairing is a test mechanism, not a production discovery or key exchange protocol. Receiver uses AudioTrack with no jitter buffer or clock synchronization yet. The app needs INTERNET permission for LAN test only; no cloud connection, storage or captured audio transmission is implemented.
+LAN PoC uses UDP port 39771, private/link-local IPv4 peers, AES-128-GCM with authenticated headers, per-session nonce prefix and packet sequence. Each packet contains 5 ms of stereo PCM16, 48 kHz (993 bytes including header/tag). First authenticated session is locked; stale, duplicate and foreign packets are rejected. Manual fresh-key pairing is a test mechanism, not a production discovery or key exchange protocol. Receiver uses AudioTrack with no jitter buffer or clock synchronization yet. The app needs INTERNET permission only for explicit LAN sessions; no cloud connection or audio storage is implemented.
+
+## Share permitted app audio (device acceptance pending)
+1. Open the receiver on a second Android phone or the native iOS receiver. Enter the Android sender's private IPv4 address and a fresh 32-character hexadecimal pairing key. Start Listen.
+2. On the Android sender, choose Share permitted app audio (30 s), enter the receiver's private IPv4 address and the same key, and grant audio-capture and notification consent. Switch to a permitted source app and play audio. The capture-only button never sends audio.
+3. Verify the receiving device plays the source and the sender reports transmitted packets. Test the wrong key, a source that forbids capture, revocation, stop notification and timeout. Sharing stops after 30 seconds; receiver listening stops after 45 seconds. No automatic reconnect.
+4. The sender packetizes PCM into the existing authenticated 5 ms format with a bounded 12-packet memory queue. The receiver currently plays arrival-order packets, without synchronized clocks, retransmission or jitter correction. UDP send counts do not prove delivery.
 
 Sources:
 - https://developer.android.com/media/platform/av-capture

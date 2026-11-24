@@ -1,0 +1,36 @@
+name: SurSoundReceiver
+options:
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  SurSoundReceiver:
+    type: application
+    platform: iOS
+    sources: [SurSoundReceiver]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.receiver
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Receive encrypted SurSound audio from a local device you choose."
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  SurSoundReceiverTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [SurSoundReceiverTests]
+    dependencies:
+      - target: SurSoundReceiver
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.receiver.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  SurSoundReceiver:
+    build:
+      targets:
+        SurSoundReceiver: all
+    test:
+      targets: [SurSoundReceiverTests]

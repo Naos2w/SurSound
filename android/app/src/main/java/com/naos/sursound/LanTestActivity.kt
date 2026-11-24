@@ -51,7 +51,7 @@ class LanTestActivity : Activity() {
         })
         root.addView(TextView(this).apply {
             text = "Local addresses: " + localAddresses() +
-                "\nEnter the other device's private IPv4 address on each phone. Share a fresh pairing key privately. Start receiver first, then sender. Test stops when leaving this screen. No captured app audio is sent."
+                "\nEnter the other device's private IPv4 address on each phone. Share a fresh pairing key privately. Start receiver first, then sender. Test stops when leaving this screen. The sender here emits only a test tone. The receiver also supports explicitly shared permitted app audio."
         })
         peer = EditText(this).apply {
             hint = "Other device IP (e.g. 192.168.1.20)"

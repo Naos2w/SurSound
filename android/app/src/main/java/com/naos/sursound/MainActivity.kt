@@ -2,6 +2,7 @@ package com.naos.sursound
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
@@ -9,9 +10,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ScrollView
 
 /** Temporary native diagnostic screen, not the final product UI. */
 class MainActivity : Activity() {
@@ -19,6 +23,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var start: Button
     private lateinit var stop: Button
+    private lateinit var share: Button
+    private var shareRequested = false
+    private var sharePeer: String? = null
+    private var shareKey: ByteArray? = null
     private var pending = false
     private val refresh = object : Runnable {
         override fun run() {
@@ -30,6 +38,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pending = savedInstanceState?.getBoolean("pending") ?: false
+        shareRequested = savedInstanceState?.getBoolean("shareRequested") ?: false
         val padding = (24 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -51,13 +60,18 @@ class MainActivity : Activity() {
         }
         status = TextView(this).apply { textSize = 16f }
         root.addView(start)
+        share = Button(this).apply {
+            setText(R.string.share_capture)
+            setOnClickListener { showShareDialog() }
+        }
+        root.addView(share)
         root.addView(stop)
         root.addView(Button(this).apply {
             setText(R.string.lan_test)
             setOnClickListener { startActivity(Intent(this@MainActivity, LanTestActivity::class.java)) }
         })
         root.addView(status)
-        setContentView(root)
+        setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         render()
     }
 
@@ -73,12 +87,14 @@ class MainActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("pending", pending)
+        outState.putBoolean("shareRequested", shareRequested)
         super.onSaveInstanceState(outState)
     }
 
     private fun render() {
         val s = CaptureState.snapshot
         start.isEnabled = !pending && !s.active
+        share.isEnabled = start.isEnabled
         stop.isEnabled = s.phase == CaptureState.Phase.STARTING || s.phase == CaptureState.Phase.CAPTURING
         status.text = buildString {
             appendLine(s.phase.name)
@@ -94,6 +110,66 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun showShareDialog() {
+        if (pending || CaptureState.snapshot.active) return
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val p = (20 * resources.displayMetrics.density).toInt()
+            setPadding(p, 0, p, 0)
+        }
+        val peer = EditText(this).apply {
+            setHint(R.string.share_peer)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            isSaveEnabled = false
+        }
+        val key = EditText(this).apply {
+            setHint(R.string.share_key)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            isSaveEnabled = false
+        }
+        fields.addView(peer)
+        fields.addView(key)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.share_capture)
+            .setMessage(R.string.share_warning)
+            .setView(fields)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.share_continue, null)
+            .create()
+        dialog.setOnDismissListener { key.text.clear() }
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    val address = LanPacketCodec.localPeer(peer.text.toString())
+                    val secret = LanPacketCodec.parseKey(key.text.toString())
+                    clearShare()
+                    sharePeer = address.hostAddress
+                    shareKey = secret
+                    shareRequested = true
+                    dialog.dismiss()
+                    requestCapture()
+                } catch (e: IllegalArgumentException) {
+                    key.error = e.message ?: getString(R.string.share_invalid)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun clearShare() {
+        shareKey?.fill(0)
+        shareKey = null
+        sharePeer = null
+        shareRequested = false
+    }
+
+    override fun onDestroy() {
+        clearShare()
+        super.onDestroy()
+    }
+
     private fun requestCapture() {
         if (pending || CaptureState.snapshot.active) return
         pending = true
@@ -107,19 +183,33 @@ class MainActivity : Activity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (permissions.isNotEmpty()) requestPermissions(permissions.toTypedArray(), PERMISSIONS)
-        else launchConsent()
+        else continueConsent()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != PERMISSIONS) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            launchConsent()
+            continueConsent()
         } else {
             pending = false
+            clearShare()
             CaptureState.reportConsentFailure("Playback-capture audio permission denied.")
             render()
         }
+    }
+
+    private fun continueConsent() {
+        if (shareRequested && (shareKey == null || sharePeer == null ||
+                (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED))) {
+            pending = false
+            clearShare()
+            CaptureState.reportConsentFailure(getString(R.string.share_permission_required))
+            render()
+            return
+        }
+        launchConsent()
     }
 
     @Suppress("DEPRECATION")
@@ -129,6 +219,7 @@ class MainActivity : Activity() {
             startActivityForResult(manager.createScreenCaptureIntent(), CONSENT)
         } catch (e: RuntimeException) {
             pending = false
+            clearShare()
             CaptureState.reportConsentFailure("Unable to request capture consent: " + e.javaClass.simpleName)
             render()
         }
@@ -137,19 +228,28 @@ class MainActivity : Activity() {
     @Deprecated("Used for platform consent in this standalone PoC")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != CONSENT) return
+        if (requestCode != CONSENT || !pending) return
         pending = false
-        if (resultCode != RESULT_OK || data == null) {
-            CaptureState.reportConsentFailure("Capture consent was not granted.")
-        } else if (!CaptureState.snapshot.active) {
-            try {
-                startForegroundService(Intent(this, CaptureService::class.java)
+        try {
+            if (resultCode != RESULT_OK || data == null) {
+                CaptureState.reportConsentFailure("Capture consent was not granted.")
+            } else if (shareRequested && (shareKey == null || sharePeer == null)) {
+                CaptureState.reportConsentFailure(getString(R.string.share_permission_required))
+            } else if (!CaptureState.snapshot.active) {
+                val request = Intent(this, CaptureService::class.java)
                     .setAction(CaptureService.ACTION_START)
                     .putExtra(CaptureService.EXTRA_RESULT_CODE, resultCode)
-                    .putExtra(CaptureService.EXTRA_RESULT_DATA, data))
-            } catch (e: RuntimeException) {
-                CaptureState.reportConsentFailure("Unable to start capture: " + e.javaClass.simpleName)
+                    .putExtra(CaptureService.EXTRA_RESULT_DATA, data)
+                if (shareRequested) {
+                    request.putExtra(CaptureService.EXTRA_SHARE_PEER, sharePeer)
+                    request.putExtra(CaptureService.EXTRA_SHARE_KEY, shareKey?.copyOf())
+                }
+                startForegroundService(request)
             }
+        } catch (e: RuntimeException) {
+            CaptureState.reportConsentFailure("Unable to start capture: " + e.javaClass.simpleName)
+        } finally {
+            clearShare()
         }
         render()
     }
