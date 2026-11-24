@@ -52,6 +52,10 @@ class MainActivity : Activity() {
         status = TextView(this).apply { textSize = 16f }
         root.addView(start)
         root.addView(stop)
+        root.addView(Button(this).apply {
+            setText(R.string.lan_test)
+            setOnClickListener { startActivity(Intent(this@MainActivity, LanTestActivity::class.java)) }
+        })
         root.addView(status)
         setContentView(root)
         render()
