@@ -14,12 +14,20 @@ struct GroupPlayout {
     private var failed = false
     private var ended = false
     private var estimator = ClockOffsetEstimator()
+    private var refinement = ClockOffsetEstimator(capacity: 4)
+    private var targetOffset = 0.0
+    private var appliedOffset = 0.0
+    private var lastGoodReply: UInt64?
+    private(set) var refinementCount = 0
     private var pending: [UInt32: Data] = [:]
     private var buffer = ReceiverPlayoutBuffer()
     var started: Bool { session != nil }
     var ready: Bool { buffer.started }
     var missing: UInt64 { buffer.missing }
     var schedulerSkipped: UInt64 { buffer.schedulerSkipped }
+    var maxDispatchLatenessNanos: UInt64 { buffer.maxDispatchLatenessNanos }
+    var residualOffsetNanos: Double { targetOffset - appliedOffset }
+    func clockAgeNanos(now: UInt64) -> UInt64? { lastGoodReply.map { now >= $0 ? now - $0 : 0 } }
     private(set) var roundTripNanos: Double?
 
     init(wire: SyncWire) { self.wire = wire }
@@ -45,26 +53,39 @@ struct GroupPlayout {
     mutating func nextProbe(now: UInt64) -> Data? {
         guard let id = session, now <= UInt64(Int64.max) else { return nil }
         settle(now: now)
-        guard !ready, !failed, attempts < 12 else { return nil }
-        if let previous = lastProbe, now - previous < 25_000_000 { return nil }
+        guard !failed, !ended, ready || attempts < 12 else { return nil }
+        let interval: UInt64 = ready ? 1_000_000_000 : 25_000_000
+        if let previous = lastProbe, now < previous || now - previous < interval { return nil }
         if let request = outstanding, now - UInt64(request.t1) < 80_000_000 { return nil }
         let request = SyncWire.Clock(kind: SyncWire.request, session: id,
             nonce: UInt64.random(in: UInt64.min...UInt64.max), t1: Int64(now), t2: 0, t3: 0)
         lastProbe = now
         outstanding = request
-        attempts += 1
+        if !ready { attempts += 1 }
         return wire.sealClock(request)
     }
 
     mutating func acceptReply(_ reply: SyncWire.Clock, now: UInt64) -> Bool {
-        guard let request = outstanding, !ready, !failed, now <= UInt64(Int64.max),
+        guard let request = outstanding, !failed, !ended, now <= UInt64(Int64.max),
               reply.kind == SyncWire.reply, reply.session == session, reply.session == request.session,
               reply.nonce == request.nonce, reply.t1 == request.t1 else { return false }
         outstanding = nil
         let exchange = ClockExchange(t1: reply.t1, t2: reply.t2, t3: reply.t3, t4: Int64(now))
         let rtt = (Double(now) - Double(reply.t1)) - (Double(reply.t3) - Double(reply.t2))
-        guard (0...100_000_000).contains(rtt), estimator.add(exchange) else { return false }
-        sampleCount += 1
+        guard now >= UInt64(request.t1), now - UInt64(request.t1) <= 100_000_000,
+              (0...100_000_000).contains(rtt) else { return false }
+        if ready {
+            let observed = ((Double(reply.t2) - Double(reply.t1)) + (Double(reply.t3) - Double(now))) / 2
+            guard rtt <= 20_000_000, abs(observed - targetOffset) <= 10_000_000,
+                  refinement.add(exchange), let estimate = refinement.estimate() else { return false }
+            targetOffset = estimate.senderMinusReceiverNanos
+            roundTripNanos = estimate.roundTripNanos
+            refinementCount += 1
+        } else {
+            guard estimator.add(exchange) else { return false }
+            sampleCount += 1
+        }
+        lastGoodReply = now
         settle(now: now)
         return true
     }
@@ -96,17 +117,22 @@ struct GroupPlayout {
         pending.removeAll()
         outstanding = nil
         roundTripNanos = estimate.roundTripNanos
+        targetOffset = estimate.senderMinusReceiverNanos
+        appliedOffset = targetOffset
     }
 
     mutating func poll(now: UInt64) -> ReceiverPlayoutBuffer.Block? {
         guard !ended else { return nil }
         settle(now: now)
-        guard let block = buffer.poll(nowNanos: now) else { return nil }
+        let limit = Double(ReceiverPlayoutBuffer.maxSlewNanos)
+        let step = Int64(max(-limit, min(limit, residualOffsetNanos)))
+        guard let block = buffer.poll(nowNanos: now, nextIntervalAdjustmentNanos: -step) else { return nil }
         if block.sequence >= Int64(SyncWire.maxPackets) {
             buffer.discardPending()
             ended = true
             return nil
         }
+        appliedOffset += Double(step)
         return block
     }
 
