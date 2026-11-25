@@ -69,9 +69,10 @@ class WinMMOutput:
         self.submitted += 1
         return True
 
-    def close(self):
+    def flush(self):
         if self.closed:
             return
+        self.reap()
         self.check(self.win.waveOutReset(self.handle), "waveOutReset")
         # Reset returns outstanding buffers. They are not evidence of audible completion.
         while self.q:
@@ -80,5 +81,9 @@ class WinMMOutput:
                                                        C.sizeof(hdr)), "waveOutUnprepareHeader")
             self.q.popleft()
             self.dropped += 1
+    def close(self):
+        if self.closed:
+            return
+        self.flush()
         self.check(self.win.waveOutClose(self.handle), "waveOutClose")
         self.closed = True
