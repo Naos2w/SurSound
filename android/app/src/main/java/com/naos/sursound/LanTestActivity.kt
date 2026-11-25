@@ -159,7 +159,7 @@ class LanTestActivity : Activity() {
         scanRequested = false
         if (resultCode != RESULT_OK || session != null) return
         val ticket = PairingScan.parse(resultCode, data)
-        if (ticket == null) {
+        if (ticket == null || ticket.live) {
             status.setText(R.string.pair_invalid)
         } else {
             discovery.stopBrowsing()

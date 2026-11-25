@@ -25,6 +25,9 @@ class MainActivity : Activity() {
     private lateinit var stop: Button
     private lateinit var share: Button
     private lateinit var groupShare: Button
+    private lateinit var liveShare: Button
+    private var shareLive = false
+    private var scanLive = false
     private var shareGroup = false
     private var shareRequested = false
     private var sharePeer: String? = null
@@ -44,6 +47,7 @@ class MainActivity : Activity() {
         pending = savedInstanceState?.getBoolean("pending") ?: false
         shareRequested = savedInstanceState?.getBoolean("shareRequested") ?: false
         scanRequested = savedInstanceState?.getBoolean("scanRequested") ?: false
+        scanLive = savedInstanceState?.getBoolean("scanLive") ?: false
         val padding = (24 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -70,6 +74,11 @@ class MainActivity : Activity() {
             setOnClickListener { showShareDialog() }
         }
         root.addView(share)
+        liveShare = Button(this).apply {
+            setText(R.string.share_live)
+            setOnClickListener { showShareDialog(live = true) }
+        }
+        root.addView(liveShare)
         groupShare = Button(this).apply {
             setText(R.string.share_group_capture)
             setOnClickListener { showShareDialog(group = true) }
@@ -101,6 +110,7 @@ class MainActivity : Activity() {
         outState.putBoolean("pending", pending)
         outState.putBoolean("shareRequested", shareRequested)
         outState.putBoolean("scanRequested", scanRequested)
+        outState.putBoolean("scanLive", scanLive)
         super.onSaveInstanceState(outState)
     }
 
@@ -109,6 +119,7 @@ class MainActivity : Activity() {
         start.isEnabled = !pending && !s.active
         share.isEnabled = start.isEnabled
         groupShare.isEnabled = start.isEnabled
+        liveShare.isEnabled = start.isEnabled
         stop.isEnabled = s.phase == CaptureState.Phase.STARTING || s.phase == CaptureState.Phase.CAPTURING
         status.text = buildString {
             appendLine(s.phase.name)
@@ -118,7 +129,13 @@ class MainActivity : Activity() {
             appendLine("Non-zero samples: " + s.reading.nonZeroSamples)
             appendLine("Last block peak: " + s.reading.peak + " / 32768")
             s.share?.let { share ->
-                appendLine("LAN mode: " + if (share.group) "v2 group" else "v1 single peer")
+                appendLine("LAN mode: " + when {
+                    share.live -> "live single receiver"
+                    share.group -> "v2 group"
+                    else -> "v1 single peer"
+                })
+                share.connection?.let { appendLine("Connection: " + it) }
+                if (share.live) appendLine("Recovered connections: " + share.recoveries)
                 appendLine("Selected receivers: " + share.peers)
                 appendLine("UDP send calls accepted: " + share.sent)
                 appendLine("Sender drops: " + share.dropped)
@@ -133,7 +150,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showShareDialog(group: Boolean = false, ticket: PairingTicket? = null) {
+    private fun showShareDialog(group: Boolean = false, ticket: PairingTicket? = null, live: Boolean = false) {
         if (pending || CaptureState.snapshot.active) return
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -185,8 +202,16 @@ class MainActivity : Activity() {
             fields.addView(results)
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle(if (group) R.string.share_group_capture else R.string.share_capture)
-            .setMessage(if (group) R.string.share_group_warning else R.string.share_warning)
+            .setTitle(when {
+                live -> R.string.share_live
+                group -> R.string.share_group_capture
+                else -> R.string.share_capture
+            })
+            .setMessage(when {
+                live -> R.string.share_live_warning
+                group -> R.string.share_group_warning
+                else -> R.string.share_warning
+            })
             .setView(fields)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.share_continue, null)
@@ -202,6 +227,7 @@ class MainActivity : Activity() {
             if (!group) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 dialog.dismiss()
                 scanRequested = true
+                scanLive = live
                 try { PairingScan.launch(this) } catch (_: RuntimeException) {
                     scanRequested = false
                     CaptureState.reportConsentFailure(getString(R.string.pair_scan_failed))
@@ -210,7 +236,7 @@ class MainActivity : Activity() {
             }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
-                    if (ticket != null && !ticket.isValidAt(System.currentTimeMillis() / 1000)) {
+                    if (ticket != null && (ticket.live != live || !ticket.isValidAt(System.currentTimeMillis() / 1000))) {
                         throw IllegalArgumentException(getString(R.string.pair_expired))
                     }
                     val addresses = capturePeers(peer.text.toString(), group)
@@ -218,6 +244,7 @@ class MainActivity : Activity() {
                     clearShare()
                     sharePeer = addresses.joinToString(",") { requireNotNull(it.hostAddress) }
                     shareGroup = group
+                    shareLive = live
                     shareKey = secret
                     shareRequested = true
                     dialog.dismiss()
@@ -235,6 +262,7 @@ class MainActivity : Activity() {
         shareKey = null
         sharePeer = null
         shareGroup = false
+        shareLive = false
         shareRequested = false
     }
 
@@ -308,12 +336,12 @@ class MainActivity : Activity() {
             scanRequested = false
             if (resultCode == RESULT_OK && !pending && !CaptureState.snapshot.active) {
                 val ticket = PairingScan.parse(resultCode, data)
-                if (ticket == null) {
+                if (ticket == null || ticket.live != scanLive) {
                     CaptureState.reportConsentFailure(getString(R.string.pair_invalid))
                     render()
                 } else {
                     // A scan only fills a review dialog. The user must continue to Android consent.
-                    showShareDialog(ticket = ticket)
+                    showShareDialog(ticket = ticket, live = scanLive)
                 }
             }
             return
@@ -334,6 +362,7 @@ class MainActivity : Activity() {
                     request.putExtra(CaptureService.EXTRA_SHARE_PEER, sharePeer)
                     request.putExtra(CaptureService.EXTRA_SHARE_KEY, shareKey?.copyOf())
                     request.putExtra(CaptureService.EXTRA_SHARE_GROUP, shareGroup)
+                    request.putExtra(CaptureService.EXTRA_SHARE_LIVE, shareLive)
                 }
                 startForegroundService(request)
             }
