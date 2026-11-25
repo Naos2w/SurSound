@@ -97,7 +97,7 @@ jobs:
           test -z "$(find "$app" -name '*.appex' -print)"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.naos.sursound.devicetest
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
-          /usr/bin/lipo -verify_arch arm64 "$app/SurSoundDeviceTest"
+          /usr/bin/lipo "$app/SurSoundDeviceTest" -verify_arch arm64
           mkdir -p "$RUNNER_TEMP/sursound-ipa/Payload"
           ditto "$app" "$RUNNER_TEMP/sursound-ipa/Payload/SurSoundDeviceTest.app"
           mkdir -p "$GITHUB_WORKSPACE/ios/device-artifacts"
