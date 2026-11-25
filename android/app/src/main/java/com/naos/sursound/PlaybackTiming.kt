@@ -58,6 +58,8 @@ internal class ReceiverPlayoutBuffer(
         private set
     var schedulerSkipped = 0L
         private set
+    var maxDispatchLatenessNanos = 0L
+        private set
 
     fun offer(sessionId: Long, sequence: Int, pcm: ByteArray, nowNanos: Long, firstDeadlineNanos: Long? = null): Boolean {
         if (sequence < 0 || sequence == Int.MAX_VALUE || pcm.size != LanPacketCodec.PCM_BYTES) return false
@@ -74,8 +76,10 @@ internal class ReceiverPlayoutBuffer(
     }
 
     /** Return one due block; null PCM means a missing frame must be rendered as silence. */
-    fun poll(nowNanos: Long): Block? {
+    fun poll(nowNanos: Long, nextIntervalAdjustmentNanos: Long = 0): Block? {
+        require(nextIntervalAdjustmentNanos in -MAX_SLEW_NANOS..MAX_SLEW_NANOS)
         if (!started || expected >= Int.MAX_VALUE || nowNanos - deadline < 0) return null
+        maxDispatchLatenessNanos = maxOf(maxDispatchLatenessNanos, nowNanos - deadline)
         val skipped = (nowNanos - deadline) / FRAME_NANOS
         if (skipped > 0) {
             expected += skipped
@@ -95,7 +99,7 @@ internal class ReceiverPlayoutBuffer(
             return null
         }
         val sequence = expected++
-        deadline += FRAME_NANOS
+        deadline += FRAME_NANOS + nextIntervalAdjustmentNanos
         val pcm = pending.remove(sequence)
         if (pcm == null) missing++
         return Block(sequence, pcm)
@@ -106,5 +110,8 @@ internal class ReceiverPlayoutBuffer(
         pending.clear()
     }
 
-    companion object { const val FRAME_NANOS = 5_000_000L }
+    companion object {
+        const val FRAME_NANOS = 5_000_000L
+        const val MAX_SLEW_NANOS = 10_000L // at most 2 ms per second of emitted slots
+    }
 }

@@ -254,9 +254,15 @@ internal class LanTestSession private constructor() {
                         changed = true
                     }
                     if (changed) {
-                        val rtt = group.roundTripNanos?.let { "%.1f ms RTT".format(it / 1_000_000.0) }
+                        val rtt = group.roundTripNanos?.let {
+                            val age = group.clockAgeNanos(System.nanoTime()) ?: 0L
+                            val phase = group.residualOffsetNanos / 1_000_000.0
+                            val late = group.maxDispatchLatenessNanos / 1_000_000.0
+                            "%.1f ms RTT | age %.1f s | phase %.3f ms | dispatch max %.2f ms | updates %d".format(
+                                it / 1_000_000.0, age / 1_000_000_000.0, phase, late, group.refinementCount)
+                        }
                         val message = if (group.started) {
-                            if (playing) "Playing shared-clock test (${rtt ?: "clock unavailable"})"
+                            if (playing) "Playing shared-clock audio (${rtt ?: "clock unavailable"})"
                             else if (group.ready) "Listening — shared clock ready (${rtt ?: "RTT unavailable"})"
                             else "Listening — waiting for authenticated clock"
                         } else if (playing) "Playing buffered authenticated LAN audio"
