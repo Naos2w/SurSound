@@ -31,7 +31,7 @@ class CaptureService : Service() {
     private lateinit var thread: HandlerThread
     private lateinit var worker: Handler
     private var session: Session? = null
-    private data class ShareTarget(val peer: InetAddress, val key: ByteArray)
+    private data class ShareTarget(val peers: List<InetAddress>, val key: ByteArray, val group: Boolean)
 
     override fun onCreate() {
         super.onCreate()
@@ -49,8 +49,10 @@ class CaptureService : Service() {
         }
         val suppliedKey = intent?.getByteArrayExtra(EXTRA_SHARE_KEY)
         val suppliedPeer = intent?.getStringExtra(EXTRA_SHARE_PEER)
+        val suppliedGroup = intent?.getBooleanExtra(EXTRA_SHARE_GROUP, false) ?: false
         intent?.removeExtra(EXTRA_SHARE_KEY)
         intent?.removeExtra(EXTRA_SHARE_PEER)
+        intent?.removeExtra(EXTRA_SHARE_GROUP)
         if (session != null) {
             suppliedKey?.fill(0)
             return START_NOT_STICKY
@@ -65,9 +67,9 @@ class CaptureService : Service() {
 
         val owner = CaptureState.begin()
         try {
-            val target = if (suppliedKey != null || suppliedPeer != null) {
+            val target = if (suppliedKey != null || suppliedPeer != null || suppliedGroup) {
                 require(suppliedKey != null && suppliedKey.size == 16 && suppliedPeer != null)
-                ShareTarget(LanPacketCodec.localPeer(suppliedPeer), suppliedKey)
+                ShareTarget(capturePeers(suppliedPeer, suppliedGroup), suppliedKey, suppliedGroup)
             } else null
             val notice = notification(target != null)
             if (target != null) {
@@ -162,7 +164,7 @@ class CaptureService : Service() {
                         lastRead = SystemClock.elapsedRealtimeNanos()
                         if (lastRead - lastPublish >= 100_000_000L) {
                             lastPublish = lastRead
-                            val message = sender?.let { "Sharing permitted playback over LAN • sent: " + it.sent + " • dropped: " + it.dropped }
+                            val message = sender?.let { "Sharing permitted playback to " + (target?.peers?.size ?: 0) + " peer(s) • sent: " + it.sent + " • dropped: " + it.dropped }
                                 ?: "Reading permitted playback audio"
                             publish(CaptureState.Phase.CAPTURING, message)
                         }
@@ -210,7 +212,7 @@ class CaptureService : Service() {
                 input.startRecording()
                 check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Recording not started" }
                 if (target != null) {
-                    sender = CaptureShareSender(target.peer, target.key)
+                    sender = CaptureShareSender(target.peers, target.key, target.group)
                     worker.postDelayed(shareTimeout, 30_000L)
                 }
                 publish(CaptureState.Phase.CAPTURING, if (sender != null) "LAN sharing active (30-second limit)" else "Waiting for permitted playback samples")
@@ -269,6 +271,7 @@ class CaptureService : Service() {
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_SHARE_PEER = "share_peer"
         const val EXTRA_SHARE_KEY = "share_key"
+        const val EXTRA_SHARE_GROUP = "share_group"
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val SAMPLE_RATE = 48_000
