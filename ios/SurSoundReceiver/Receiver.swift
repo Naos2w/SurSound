@@ -211,8 +211,12 @@ final class Receiver: ObservableObject {
     private func playoutMessage() -> String {
         if group?.started == true {
             if let rtt = group?.roundTripNanos {
-                let timing = String(format: "%.1f ms RTT", rtt / 1_000_000)
-                return (player?.isPlaying == true ? "Playing shared-clock test (" : "Shared clock ready (") + timing + ")"
+                let age = group?.clockAgeNanos(now: DispatchTime.now().uptimeNanoseconds) ?? 0
+                let phase = (group?.residualOffsetNanos ?? 0) / 1_000_000
+                let late = Double(group?.maxDispatchLatenessNanos ?? 0) / 1_000_000
+                let timing = String(format: "%.1f ms RTT | age %.1f s | phase %.3f ms | dispatch max %.2f ms | updates %d",
+                    rtt / 1_000_000, Double(age) / 1_000_000_000, phase, late, group?.refinementCount ?? 0)
+                return (player?.isPlaying == true ? "Playing shared-clock audio (" : "Shared clock ready (") + timing + ")"
             }
             return "Waiting for authenticated clock; no group audio yet"
         }

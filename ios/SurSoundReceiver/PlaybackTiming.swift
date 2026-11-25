@@ -51,6 +51,7 @@ struct ClockOffsetEstimator {
 /// Local-clock playout of authenticated 5 ms PCM blocks. Bounded reorder window.
 struct ReceiverPlayoutBuffer {
     static let frameNanos: UInt64 = 5_000_000
+    static let maxSlewNanos: Int64 = 10_000 // at most 2 ms per second of emitted slots
     struct Block {
         let sequence: Int64
         let pcm: Data?
@@ -64,6 +65,7 @@ struct ReceiverPlayoutBuffer {
     private var pending: [Int64: Data] = [:]
     private(set) var missing: UInt64 = 0
     private(set) var schedulerSkipped: UInt64 = 0
+    private(set) var maxDispatchLatenessNanos: UInt64 = 0
     var started: Bool { session != nil }
     var queued: Int { pending.count }
 
@@ -89,8 +91,10 @@ struct ReceiverPlayoutBuffer {
     }
 
     /// One due block at most; nil PCM represents a missing frame (render silence).
-    mutating func poll(nowNanos: UInt64) -> Block? {
+    mutating func poll(nowNanos: UInt64, nextIntervalAdjustmentNanos: Int64 = 0) -> Block? {
+        precondition((-Self.maxSlewNanos...Self.maxSlewNanos).contains(nextIntervalAdjustmentNanos))
         guard started, expected < Int64(Int32.max), nowNanos >= deadline else { return nil }
+        maxDispatchLatenessNanos = max(maxDispatchLatenessNanos, nowNanos - deadline)
         let skipped = (nowNanos - deadline) / Self.frameNanos
         if skipped > 0 {
             expected += Int64(skipped)
@@ -101,7 +105,7 @@ struct ReceiverPlayoutBuffer {
         guard expected < Int64(Int32.max) else { discardPending(); return nil }
         let sequence = expected
         expected += 1
-        deadline += Self.frameNanos
+        deadline += UInt64(Int64(Self.frameNanos) + nextIntervalAdjustmentNanos)
         let pcm = pending.removeValue(forKey: sequence)
         if pcm == nil { missing += 1 }
         return Block(sequence: sequence, pcm: pcm)
