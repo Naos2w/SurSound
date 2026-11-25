@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private var shareKey: ByteArray? = null
     private var pending = false
     private var shareDiscovery: PeerDiscovery? = null
+    private var scanRequested = false
     private val refresh = object : Runnable {
         override fun run() {
             render()
@@ -42,6 +43,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         pending = savedInstanceState?.getBoolean("pending") ?: false
         shareRequested = savedInstanceState?.getBoolean("shareRequested") ?: false
+        scanRequested = savedInstanceState?.getBoolean("scanRequested") ?: false
         val padding = (24 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -98,6 +100,7 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("pending", pending)
         outState.putBoolean("shareRequested", shareRequested)
+        outState.putBoolean("scanRequested", scanRequested)
         super.onSaveInstanceState(outState)
     }
 
@@ -130,7 +133,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showShareDialog(group: Boolean = false) {
+    private fun showShareDialog(group: Boolean = false, ticket: PairingTicket? = null) {
         if (pending || CaptureState.snapshot.active) return
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -139,18 +142,23 @@ class MainActivity : Activity() {
         }
         val peer = EditText(this).apply {
             setHint(if (group) R.string.share_group_peers else R.string.share_peer)
+            if (ticket != null) setText(ticket.peer)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
             isSaveEnabled = false
         }
         val key = EditText(this).apply {
             setHint(R.string.share_key)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            if (ticket != null) setText(ticket.keyHex)
             setSingleLine(true)
             isSaveEnabled = false
         }
+        peer.isEnabled = ticket == null
+        key.isEnabled = ticket == null
         fields.addView(peer)
         fields.addView(key)
+        if (ticket != null) fields.addView(TextView(this).apply { setText(R.string.pair_review) })
         val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val discovery = PeerDiscovery(this) { addresses ->
             results.removeAllViews()
@@ -169,17 +177,20 @@ class MainActivity : Activity() {
         }
         shareDiscovery?.close()
         shareDiscovery = discovery
-        fields.addView(Button(this).apply {
-            setText(R.string.find_receivers)
-            setOnClickListener { discovery.browse() }
-        })
-        fields.addView(results)
+        if (ticket == null) {
+            fields.addView(Button(this).apply {
+                setText(R.string.find_receivers)
+                setOnClickListener { discovery.browse() }
+            })
+            fields.addView(results)
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle(if (group) R.string.share_group_capture else R.string.share_capture)
             .setMessage(if (group) R.string.share_group_warning else R.string.share_warning)
             .setView(fields)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.share_continue, null)
+            .apply { if (!group) setNeutralButton(R.string.pair_scan, null) }
             .create()
         dialog.setOnDismissListener {
             key.text.clear()
@@ -187,8 +198,20 @@ class MainActivity : Activity() {
             if (shareDiscovery === discovery) shareDiscovery = null
         }
         dialog.setOnShowListener {
+            if (!group) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                dialog.dismiss()
+                scanRequested = true
+                try { PairingScan.launch(this) } catch (_: RuntimeException) {
+                    scanRequested = false
+                    CaptureState.reportConsentFailure(getString(R.string.pair_scan_failed))
+                    render()
+                }
+            }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
+                    if (ticket != null && !ticket.isValidAt(System.currentTimeMillis() / 1000)) {
+                        throw IllegalArgumentException(getString(R.string.pair_expired))
+                    }
                     val addresses = capturePeers(peer.text.toString(), group)
                     val secret = LanPacketCodec.parseKey(key.text.toString())
                     clearShare()
@@ -279,6 +302,21 @@ class MainActivity : Activity() {
     @Deprecated("Used for platform consent in this standalone PoC")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PairingScan.REQUEST) {
+            if (!scanRequested) return
+            scanRequested = false
+            if (resultCode == RESULT_OK && !pending && !CaptureState.snapshot.active) {
+                val ticket = PairingScan.parse(resultCode, data)
+                if (ticket == null) {
+                    CaptureState.reportConsentFailure(getString(R.string.pair_invalid))
+                    render()
+                } else {
+                    // A scan only fills a review dialog. The user must continue to Android consent.
+                    showShareDialog(ticket = ticket)
+                }
+            }
+            return
+        }
         if (requestCode != CONSENT || !pending) return
         pending = false
         try {
