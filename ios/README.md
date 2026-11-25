@@ -32,6 +32,6 @@ References:
 - https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios
 - https://developer.apple.com/documentation/Technotes/tn3179-understanding-local-network-privacy
 
-Remaining: real-device broadcast/discovery/duplex-direction tests, production pairing, clock synchronization, jitter correction and host output compensation.
+Remaining: real-device broadcast/discovery/duplex-direction tests, production pairing, authenticated clock synchronization, adaptive drift/buffer correction and host output compensation.
 
 The receiver uses a bounded 40 ms initial local playout buffer with reordering, silence for missing blocks and skipped overdue scheduler slots. This is not yet shared-clock synchronization or a measured acoustic delay. See [synchronization staging](../docs/audio-synchronization.md).

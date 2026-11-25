@@ -143,10 +143,10 @@ final class Receiver: ObservableObject {
                 }
                 self.count += 1
                 self.startPlayoutTimer(generation: id)
-                self.publish("Buffering authenticated PCM audio")
+                self.publish(self.player?.isPlaying == true ? "Playing buffered authenticated PCM audio" : "Buffering authenticated PCM audio")
             } else {
                 self.rejected += 1
-                self.publish("Listening for authenticated local audio...")
+                self.publish(self.player?.isPlaying == true ? "Playing buffered authenticated PCM audio" : "Listening for authenticated local audio...")
             }
             self.read(connection, generation: id)
         }
