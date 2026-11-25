@@ -8,10 +8,11 @@ SurSound is a wireless audio system, not a music player. It captures permitted a
 
 ## Status
 
-Phase 0 — technical feasibility. No working app, supported-source guarantee or released version yet.
+Phase 0 — technical feasibility. Android permitted app-audio capture and v1 playback to a local Windows diagnostic receiver have been audibly demonstrated on physical hardware. A production app, broad source support, iOS device acceptance and calibrated group synchronization remain unverified; no released version yet.
 
 - [Requirements](docs/requirements.md)
 - [Architecture](docs/architecture.md)
+- [Windows diagnostic receiver](windows/README.md)
 - [Git workflow](docs/git-workflow.md)
 - [GitHub Issues — authoritative task tracking](https://github.com/Naos2w/SurSound/issues)
 - [SurSound Development project board](https://github.com/users/Naos2w/projects/2)

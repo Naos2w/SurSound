@@ -114,6 +114,15 @@ class MainActivity : Activity() {
             appendLine("Frames: " + s.reading.frames)
             appendLine("Non-zero samples: " + s.reading.nonZeroSamples)
             appendLine("Last block peak: " + s.reading.peak + " / 32768")
+            s.share?.let { share ->
+                appendLine("LAN mode: " + if (share.group) "v2 group" else "v1 single peer")
+                appendLine("Selected receivers: " + share.peers)
+                appendLine("UDP send calls accepted: " + share.sent)
+                appendLine("Sender drops: " + share.dropped)
+                appendLine("Queued datagrams discarded on teardown: " + share.discardedQueued)
+                appendLine("Receiver delivery is not confirmed by send counts.")
+                if (!s.active && !share.senderFinished) appendLine("Sender teardown snapshot is provisional.")
+            }
             if (s.phase == CaptureState.Phase.CAPTURING && s.reading.nonZeroSamples == 0L) {
                 appendLine("No audible signal observed. Source may be silent or disallow capture.")
             }

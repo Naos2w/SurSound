@@ -3,11 +3,22 @@ package com.naos.sursound
 internal object CaptureState {
     enum class Phase { IDLE, STARTING, CAPTURING, STOPPING, STOPPED, ERROR }
 
+    /** Datagram send calls accepted locally, not confirmed receiver delivery. */
+    data class ShareStats(
+        val group: Boolean,
+        val peers: Int,
+        val sent: Long,
+        val dropped: Long,
+        val discardedQueued: Long,
+        val senderFinished: Boolean
+    )
+
     data class Snapshot(
         val phase: Phase = Phase.IDLE,
         val message: String = "Ready",
         val reading: PcmMeter.Reading = PcmMeter.Reading(),
-        val lastReadNanos: Long = 0
+        val lastReadNanos: Long = 0,
+        val share: ShareStats? = null
     ) {
         val active: Boolean
             get() = phase == Phase.STARTING || phase == Phase.CAPTURING || phase == Phase.STOPPING
