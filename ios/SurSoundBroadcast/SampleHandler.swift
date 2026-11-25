@@ -7,6 +7,7 @@ import ReplayKit
 final class SampleHandler: RPBroadcastSampleHandler {
     private let lock = NSRecursiveLock()
     private var sender: PacketSender?
+    private var groupSender: GroupCaptureSender?
     private var converter: AVAudioConverter?
     private let outputFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
     private var packetizer = StereoPacketizer()
@@ -18,10 +19,15 @@ final class SampleHandler: RPBroadcastSampleHandler {
         defer { lock.unlock() }
         do {
             let request = try BroadcastRequest.take()
-            guard let peer = LanPacket.localPeer(request.peer), let key = LanPacket.key(request.secret) else {
+            guard let peers = capturePeers(request.peer, group: request.groupMode == true),
+                  let key = LanPacket.key(request.secret) else {
                 throw NSError(domain: "SurSound.Broadcast", code: 4)
             }
-            sender = PacketSender(peer: peer, key: key)
+            if request.groupMode == true {
+                groupSender = GroupCaptureSender(addresses: peers, key: key)
+            } else if let peer = peers.first {
+                sender = PacketSender(peer: peer, key: key)
+            }
             let timeout = DispatchWorkItem { [weak self] in self?.end("30-second sharing test ended.") }
             timer = timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: timeout)
@@ -34,8 +40,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
         guard sampleBufferType == .audioApp else { return }
         lock.lock()
         defer { lock.unlock() }
-        guard !finished, let sender = sender else { return }
-        if let failure = sender.snapshot().failure {
+        guard !finished, sender != nil || groupSender != nil else { return }
+        if let failure = groupSender?.failure() ?? sender?.snapshot().failure {
             end("Local transmission stopped: " + failure); return
         }
         guard CMSampleBufferDataIsReady(sampleBuffer),
@@ -66,7 +72,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
         guard result != .error, error == nil, let channels = output.floatChannelData else { return }
         for frame in 0..<Int(output.frameLength) {
             if let packet = packetizer.append(left: channels[0][frame], right: channels[1][frame]) {
-                sender.offer(packet)
+                if let output = groupSender { output.offer(packet) }
+                else { sender?.offer(packet) }
             }
         }
     }
@@ -88,6 +95,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
         timer = nil
         sender?.stop()
         sender = nil
+        groupSender?.stop()
+        groupSender = nil
         converter = nil
         packetizer.clear()
     }

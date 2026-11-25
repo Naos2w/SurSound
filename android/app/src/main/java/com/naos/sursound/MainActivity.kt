@@ -24,6 +24,8 @@ class MainActivity : Activity() {
     private lateinit var start: Button
     private lateinit var stop: Button
     private lateinit var share: Button
+    private lateinit var groupShare: Button
+    private var shareGroup = false
     private var shareRequested = false
     private var sharePeer: String? = null
     private var shareKey: ByteArray? = null
@@ -66,6 +68,11 @@ class MainActivity : Activity() {
             setOnClickListener { showShareDialog() }
         }
         root.addView(share)
+        groupShare = Button(this).apply {
+            setText(R.string.share_group_capture)
+            setOnClickListener { showShareDialog(group = true) }
+        }
+        root.addView(groupShare)
         root.addView(stop)
         root.addView(Button(this).apply {
             setText(R.string.lan_test)
@@ -98,6 +105,7 @@ class MainActivity : Activity() {
         val s = CaptureState.snapshot
         start.isEnabled = !pending && !s.active
         share.isEnabled = start.isEnabled
+        groupShare.isEnabled = start.isEnabled
         stop.isEnabled = s.phase == CaptureState.Phase.STARTING || s.phase == CaptureState.Phase.CAPTURING
         status.text = buildString {
             appendLine(s.phase.name)
@@ -113,7 +121,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showShareDialog() {
+    private fun showShareDialog(group: Boolean = false) {
         if (pending || CaptureState.snapshot.active) return
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -121,7 +129,7 @@ class MainActivity : Activity() {
             setPadding(p, 0, p, 0)
         }
         val peer = EditText(this).apply {
-            setHint(R.string.share_peer)
+            setHint(if (group) R.string.share_group_peers else R.string.share_peer)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
             isSaveEnabled = false
@@ -141,8 +149,11 @@ class MainActivity : Activity() {
                 results.addView(Button(this).apply {
                     text = address
                     setOnClickListener {
-                        peer.setText(address)
-                        shareDiscovery?.stopBrowsing()
+                        if (group && peer.text.isNotBlank()) {
+                            val current = peer.text.toString().split(',').map { it.trim() }
+                            if (address !in current && current.size < 4) peer.setText(current.joinToString(",") + "," + address)
+                        } else peer.setText(address)
+                        if (!group) shareDiscovery?.stopBrowsing()
                     }
                 })
             }
@@ -155,8 +166,8 @@ class MainActivity : Activity() {
         })
         fields.addView(results)
         val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.share_capture)
-            .setMessage(R.string.share_warning)
+            .setTitle(if (group) R.string.share_group_capture else R.string.share_capture)
+            .setMessage(if (group) R.string.share_group_warning else R.string.share_warning)
             .setView(fields)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.share_continue, null)
@@ -169,10 +180,11 @@ class MainActivity : Activity() {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
-                    val address = LanPacketCodec.localPeer(peer.text.toString())
+                    val addresses = capturePeers(peer.text.toString(), group)
                     val secret = LanPacketCodec.parseKey(key.text.toString())
                     clearShare()
-                    sharePeer = address.hostAddress
+                    sharePeer = addresses.joinToString(",") { requireNotNull(it.hostAddress) }
+                    shareGroup = group
                     shareKey = secret
                     shareRequested = true
                     dialog.dismiss()
@@ -189,6 +201,7 @@ class MainActivity : Activity() {
         shareKey?.fill(0)
         shareKey = null
         sharePeer = null
+        shareGroup = false
         shareRequested = false
     }
 
@@ -272,6 +285,7 @@ class MainActivity : Activity() {
                 if (shareRequested) {
                     request.putExtra(CaptureService.EXTRA_SHARE_PEER, sharePeer)
                     request.putExtra(CaptureService.EXTRA_SHARE_KEY, shareKey?.copyOf())
+                    request.putExtra(CaptureService.EXTRA_SHARE_GROUP, shareGroup)
                 }
                 startForegroundService(request)
             }

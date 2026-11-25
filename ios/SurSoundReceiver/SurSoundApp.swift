@@ -86,8 +86,12 @@ struct ReceiverView: View {
                 Section("Share permitted app audio (legacy ReplayKit)") {
                     Text("Grant Local Network access using Find local receivers first. Prepare a fresh pairing, then tap the system broadcast control and confirm Start Broadcast. Only permitted app audio is transmitted; microphone and screen frames are discarded. Use the system recording indicator to stop. The PoC stops after 30 seconds.")
                         .font(.footnote)
-                    Button("Prepare 30-second share") { prepare() }
+                    Button("Prepare single-device share (30 s)") { prepare() }
                         .disabled(receiver.active || tone.active || prepared)
+                    Button("Prepare group app-audio share (30 s)") { prepare(group: true) }
+                        .disabled(receiver.active || tone.active || prepared)
+                    Text("Group: enter 1–4 comma-separated receiver IPs, share one fresh key privately, and start the receivers first. System broadcast consent is still required. Audio already transmitted may briefly finish playing after stopping.")
+                        .font(.footnote)
                     if prepared {
                         BroadcastPicker().frame(width: 56, height: 56)
                         Button("Cancel prepared pairing", role: .destructive) { cancelPreparation() }
@@ -116,10 +120,10 @@ struct ReceiverView: View {
         }
     }
 
-    private func prepare() {
+    private func prepare(group: Bool = false) {
         discovery.stop()
         do {
-            try BroadcastRequest.prepare(peer: peer, secret: key)
+            try BroadcastRequest.prepare(peer: peer, secret: key, groupMode: group)
             key = ""
             prepared = true
             preparationMessage = "Prepared. Tap the system broadcast control within 90 seconds."

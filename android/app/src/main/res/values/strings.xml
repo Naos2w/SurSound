@@ -18,4 +18,7 @@
     <string name="share_notification_title">SurSound is sharing permitted app audio</string>
     <string name="share_notification_text">Encrypted local audio sharing, limited to 30 seconds. Tap Stop to end.</string>
     <string name="find_receivers">Find local receivers (15 s)</string>
+    <string name="share_group_capture">Share permitted app audio to group (30 s)</string>
+    <string name="share_group_peers">1–4 receiver IPv4 addresses, comma-separated</string>
+    <string name="share_group_warning">Start each selected receiver first. Only permitted app playback is encrypted and shared with these local devices for up to 30 seconds. Use one fresh key shared privately with this group. Receiver playout requires an authenticated clock. Stop using the foreground notification. Already transmitted buffered audio may briefly finish playing.</string>
 </resources>
