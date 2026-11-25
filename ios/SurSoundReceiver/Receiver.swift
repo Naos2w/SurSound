@@ -16,7 +16,8 @@ final class Receiver: ObservableObject {
     private var selected: ObjectIdentifier?
     private var expected: IPv4Address?
     private var key: SymmetricKey?
-    private var replay = LanPacket.ReplayGuard()
+    private var playout = ReceiverPlayoutBuffer()
+    private var playoutTimer: DispatchSourceTimer?
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
     private var format: AVAudioFormat?
@@ -38,7 +39,7 @@ final class Receiver: ObservableObject {
         generation = id
         expected = address
         key = pairingKey
-        replay = LanPacket.ReplayGuard()
+        playout = ReceiverPlayoutBuffer()
         count = 0
         rejected = 0
         packetCount = 0
@@ -130,7 +131,9 @@ final class Receiver: ObservableObject {
                 return
             }
             if let data = data, let key = self.key, let packet = LanPacket.decode(data, key: key),
-               (self.selected == nil || self.selected == token), self.replay.accept(packet) {
+               (self.selected == nil || self.selected == token),
+               self.playout.offer(sessionId: packet.session, sequence: packet.sequence, pcm: packet.pcm,
+                                  nowNanos: DispatchTime.now().uptimeNanoseconds) {
                 if self.selected == nil {
                     self.selected = token
                     for (other, candidate) in Array(self.connections) where other != token {
@@ -139,14 +142,29 @@ final class Receiver: ObservableObject {
                     }
                 }
                 self.count += 1
-                if !self.play(packet.pcm, generation: id) { self.rejected += 1 }
-                self.publish("Receiving authenticated PCM audio")
+                self.startPlayoutTimer(generation: id)
+                self.publish("Buffering authenticated PCM audio")
             } else {
                 self.rejected += 1
                 self.publish("Listening for authenticated local audio...")
             }
             self.read(connection, generation: id)
         }
+    }
+
+    private func startPlayoutTimer(generation id: UUID) {
+        guard playoutTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(2), leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in
+            guard let self = self, self.active, self.generation == id else { return }
+            guard let block = self.playout.poll(nowNanos: DispatchTime.now().uptimeNanoseconds) else { return }
+            let pcm = block.pcm ?? Data(repeating: 0, count: LanPacket.pcmBytes)
+            if !self.play(pcm, generation: id) { self.rejected += 1 }
+            self.publish("Playing buffered authenticated PCM audio")
+        }
+        playoutTimer = timer
+        timer.resume()
     }
 
     private func play(_ pcm: Data, generation id: UUID) -> Bool {
@@ -178,7 +196,7 @@ final class Receiver: ObservableObject {
         lastPublish = Date()
         status = message
         packetCount = count
-        drops = rejected + replay.missing
+        drops = rejected + playout.missing + playout.schedulerSkipped
     }
 
     func stop(_ message: String = "Stopped.") {
@@ -187,6 +205,9 @@ final class Receiver: ObservableObject {
         generation = UUID()
         timeout?.cancel()
         timeout = nil
+        playoutTimer?.cancel()
+        playoutTimer = nil
+        playout.discardPending()
         listener?.cancel()
         listener = nil
         for connection in connections.values { connection.cancel() }
