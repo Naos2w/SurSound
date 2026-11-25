@@ -85,6 +85,32 @@ jobs:
           set -euo pipefail
           device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
           xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundReceiver -configuration Debug -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO -resultBundlePath TestResults.xcresult test
+      - name: Build unsigned arm64 iOS device test IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundDeviceTest -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/sursound-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          app="$RUNNER_TEMP/sursound-device/Build/Products/Release-iphoneos/SurSoundDeviceTest.app"
+          test -d "$app"
+          test -f "$app/SurSoundDeviceTest"
+          test ! -e "$app/embedded.mobileprovision"
+          test -z "$(find "$app" -name '*.appex' -print)"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.naos.sursound.devicetest
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          /usr/bin/lipo "$app/SurSoundDeviceTest" -verify_arch arm64
+          mkdir -p "$RUNNER_TEMP/sursound-ipa/Payload"
+          ditto "$app" "$RUNNER_TEMP/sursound-ipa/Payload/SurSoundDeviceTest.app"
+          mkdir -p "$GITHUB_WORKSPACE/ios/device-artifacts"
+          ditto -c -k --keepParent "$RUNNER_TEMP/sursound-ipa/Payload" "$GITHUB_WORKSPACE/ios/device-artifacts/SurSoundDeviceTest-unsigned.ipa"
+          cd "$GITHUB_WORKSPACE/ios/device-artifacts"
+          shasum -a 256 SurSoundDeviceTest-unsigned.ipa > SHA256SUMS.txt
+          unzip -t SurSoundDeviceTest-unsigned.ipa
+      - name: Upload unsigned device test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sursound-ios-device-test-unsigned
+          path: ios/device-artifacts/
+          if-no-files-found: error
       - name: Upload iOS test result
         if: always()
         uses: actions/upload-artifact@v4
