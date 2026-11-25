@@ -10,13 +10,37 @@ targets:
   SurSoundReceiver:
     type: application
     platform: iOS
-    sources: [SurSoundReceiver]
+    sources:
+      - path: SurSoundReceiver
+        excludes: [Info.plist]
+      - path: Shared
+        excludes: [SurSound.entitlements]
+    dependencies:
+      - target: SurSoundBroadcast
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.receiver
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Receive encrypted SurSound audio from a local device you choose."
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_FILE: SurSoundReceiver/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Shared/SurSound.entitlements
+  SurSoundBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SurSoundBroadcast
+        excludes: [Info.plist]
+      - path: Shared
+        excludes: [SurSound.entitlements]
+      - path: SurSoundReceiver/LanPacket.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.receiver.broadcast
+        INFOPLIST_FILE: SurSoundBroadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Shared/SurSound.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
   SurSoundReceiverTests:
     type: bundle.unit-test
     platform: iOS
@@ -32,5 +56,6 @@ schemes:
     build:
       targets:
         SurSoundReceiver: all
+        SurSoundBroadcast: all
     test:
       targets: [SurSoundReceiverTests]

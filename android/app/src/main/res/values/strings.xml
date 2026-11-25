@@ -17,4 +17,5 @@
     <string name="share_permission_required">Sharing needs capture consent, visible notifications and a fresh pairing key. Please start again.</string>
     <string name="share_notification_title">SurSound is sharing permitted app audio</string>
     <string name="share_notification_text">Encrypted local audio sharing, limited to 30 seconds. Tap Stop to end.</string>
+    <string name="find_receivers">Find local receivers (15 s)</string>
 </resources>

@@ -64,6 +64,7 @@ final class Receiver: ObservableObject {
             format = f
             try e.start()
             let local = try NWListener(using: .udp, on: NWEndpoint.Port(rawValue: LanPacket.port)!)
+            local.service = NWListener.Service(name: "SurSound-" + String(UUID().uuidString.prefix(8)), type: "_sursound._udp")
             listener = local
             local.stateUpdateHandler = { [weak self] state in
                 guard let self = self, self.active, self.generation == id else { return }

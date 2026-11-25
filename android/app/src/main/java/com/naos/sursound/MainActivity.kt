@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private var sharePeer: String? = null
     private var shareKey: ByteArray? = null
     private var pending = false
+    private var shareDiscovery: PeerDiscovery? = null
     private val refresh = object : Runnable {
         override fun run() {
             render()
@@ -82,6 +83,8 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         main.removeCallbacks(refresh)
+        shareDiscovery?.close()
+        shareDiscovery = null
         super.onStop()
     }
 
@@ -131,6 +134,26 @@ class MainActivity : Activity() {
         }
         fields.addView(peer)
         fields.addView(key)
+        val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val discovery = PeerDiscovery(this) { addresses ->
+            results.removeAllViews()
+            addresses.take(5).forEach { address ->
+                results.addView(Button(this).apply {
+                    text = address
+                    setOnClickListener {
+                        peer.setText(address)
+                        shareDiscovery?.stopBrowsing()
+                    }
+                })
+            }
+        }
+        shareDiscovery?.close()
+        shareDiscovery = discovery
+        fields.addView(Button(this).apply {
+            setText(R.string.find_receivers)
+            setOnClickListener { discovery.browse() }
+        })
+        fields.addView(results)
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.share_capture)
             .setMessage(R.string.share_warning)
@@ -138,7 +161,11 @@ class MainActivity : Activity() {
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.share_continue, null)
             .create()
-        dialog.setOnDismissListener { key.text.clear() }
+        dialog.setOnDismissListener {
+            key.text.clear()
+            discovery.close()
+            if (shareDiscovery === discovery) shareDiscovery = null
+        }
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
@@ -166,6 +193,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        shareDiscovery?.close()
+        shareDiscovery = null
         clearShare()
         super.onDestroy()
     }

@@ -26,12 +26,22 @@ class LanTestActivity : Activity() {
     private lateinit var receive: Button
     private lateinit var stop: Button
     private lateinit var generate: Button
+    private lateinit var discovery: PeerDiscovery
+    private lateinit var discoveredPeers: LinearLayout
+    private lateinit var discover: Button
+    private var receiving = false
 
     private val refresh = object : Runnable {
         override fun run() {
             session?.status?.let { state ->
                 status.text = state.message + "\nPackets: " + state.packets + "\nMissing/rejected/output drops: " + state.dropped
-                if (!state.running) session = null
+                if (!state.running) {
+                    session = null
+                    receiving = false
+                    discovery.stopAdvertising()
+                } else if (receiving && (state.message.startsWith("Listening") || state.message.startsWith("Playing"))) {
+                    discovery.advertise()
+                }
             }
             updateButtons()
             main.postDelayed(this, 250)
@@ -73,7 +83,24 @@ class LanTestActivity : Activity() {
         receive = Button(this).apply { text = "Listen (45 s)"; setOnClickListener { startTest(false) } }
         stop = Button(this).apply { text = "Stop test"; setOnClickListener { stopTest() } }
         status = TextView(this).apply { text = "Ready" }
-        listOf(peer, key, generate, receive, send, stop, status).forEach { root.addView(it) }
+        discoveredPeers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        discovery = PeerDiscovery(this) { addresses ->
+            discoveredPeers.removeAllViews()
+            for (address in addresses) {
+                discoveredPeers.addView(Button(this).apply {
+                    text = "Receiver: " + address
+                    setOnClickListener {
+                        peer.setText(address)
+                        discovery.stopBrowsing()
+                    }
+                })
+            }
+        }
+        discover = Button(this).apply {
+            text = "Find local receivers (15 s)"
+            setOnClickListener { discovery.browse() }
+        }
+        listOf(peer, key, generate, discover, discoveredPeers, receive, send, stop, status).forEach { root.addView(it) }
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         updateButtons()
     }
@@ -86,6 +113,7 @@ class LanTestActivity : Activity() {
     override fun onStop() {
         main.removeCallbacks(refresh)
         stopTest()
+        discovery.close()
         key.text.clear()
         super.onStop()
     }
@@ -96,6 +124,8 @@ class LanTestActivity : Activity() {
             val address = LanPacketCodec.localPeer(peer.text.toString())
             val bytes = LanPacketCodec.parseKey(key.text.toString())
             try {
+                discovery.stopBrowsing()
+                receiving = !sender
                 session = if (sender) LanTestSession.sender(address, bytes) else LanTestSession.receiver(address, bytes)
             } finally { bytes.fill(0) }
             key.text.clear()
@@ -107,6 +137,8 @@ class LanTestActivity : Activity() {
     }
 
     private fun stopTest() {
+        receiving = false
+        discovery.stopAdvertising()
         session?.let { current ->
             current.stop()
             status.text = "Stopping"
@@ -119,6 +151,7 @@ class LanTestActivity : Activity() {
         peer.isEnabled = ready
         key.isEnabled = ready
         generate.isEnabled = ready
+        discover.isEnabled = ready
         send.isEnabled = ready
         receive.isEnabled = ready
         stop.isEnabled = !ready

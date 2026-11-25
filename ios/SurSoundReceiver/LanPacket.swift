@@ -61,6 +61,36 @@ enum LanPacket {
         } catch { return nil }
     }
 
+    static func seal(_ pcm: Data, key: SymmetricKey, session: UInt64, sequence: UInt32) throws -> Data {
+        guard pcm.count == pcmBytes, sequence < UInt32(Int32.max) else {
+            throw NSError(domain: "SurSound.Packet", code: 1)
+        }
+        var header = Data([0x53, 0x53, 0x50, 0x30, 1])
+        for shift in stride(from: 56, through: 0, by: -8) {
+            header.append(UInt8(truncatingIfNeeded: session >> shift))
+        }
+        for shift in stride(from: 24, through: 0, by: -8) {
+            header.append(UInt8(truncatingIfNeeded: sequence >> shift))
+        }
+        let nonce = try AES.GCM.Nonce(data: header.dropFirst(5))
+        let box = try AES.GCM.seal(pcm, using: key, nonce: nonce, authenticating: header)
+        return header + box.ciphertext + box.tag
+    }
+
+    struct Encoder {
+        let key: SymmetricKey
+        let session = UInt64.random(in: UInt64.min...UInt64.max)
+        private var sequence: UInt32 = 0
+
+        init(key: SymmetricKey) { self.key = key }
+
+        mutating func encode(_ pcm: Data) throws -> Data {
+            let result = try LanPacket.seal(pcm, key: key, session: session, sequence: sequence)
+            sequence += 1
+            return result
+        }
+    }
+
     struct ReplayGuard {
         private var session: UInt64?
         private var highest: UInt32 = 0

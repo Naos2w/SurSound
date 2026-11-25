@@ -12,6 +12,7 @@ final class LanPacketTests: XCTestCase {
         let sealed = try AES.GCM.seal(pcm, using: key, nonce: nonce, authenticating: header)
         let packet = header + sealed.ciphertext + sealed.tag
         XCTAssertEqual(packet.count, 993)
+        XCTAssertEqual(try LanPacket.seal(pcm, key: key, session: 0x0102030405060708, sequence: 42), packet)
         let digest = SHA256.hash(data: packet).map { String(format: "%02x", $0) }.joined()
         XCTAssertEqual(digest, "0d9cb39a5141757e2f4903d4ba8762840cbb82416acb5ccdea12496bc2259535")
         let decoded = try XCTUnwrap(LanPacket.decode(packet, key: key))

@@ -31,3 +31,6 @@ LAN PoC uses UDP port 39771, private/link-local IPv4 peers, AES-128-GCM with aut
 Sources:
 - https://developer.android.com/media/platform/av-capture
 - https://developer.android.com/develop/background-work/services/fgs/service-types
+
+## Discover receivers
+Android advertises a random-named `_sursound._udp` Bonjour service only while its receiver is listening. The LAN diagnostic and the app-audio sharing dialog offer a 15-second explicit browse; select an advertised private IPv4 address or enter it manually. Discovery does not authenticate the peer; retain a fresh matching 128-bit key. Test Android/iOS discovery, service loss, local permission and hotspot behavior on physical devices. Receiving from the iOS synthetic tone or legacy ReplayKit sender uses the same packet format, but neither reverse-direction device playback nor iOS capture is yet verified.
