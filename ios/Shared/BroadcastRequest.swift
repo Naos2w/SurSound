@@ -8,10 +8,19 @@ struct BroadcastRequest: Codable {
     let peer: String
     let secret: String
     let expiresAt: Date
+    // Optional for decoding an existing short-lived v1 request; nil means single peer.
+    let groupMode: Bool?
+
+    init(peer: String, secret: String, expiresAt: Date, groupMode: Bool = false) {
+        self.peer = peer
+        self.secret = secret
+        self.expiresAt = expiresAt
+        self.groupMode = groupMode
+    }
 
     var valid: Bool {
         let remaining = expiresAt.timeIntervalSinceNow
-        return remaining > 0 && remaining <= 120 && LanPacket.localPeer(peer) != nil && LanPacket.key(secret) != nil
+        return remaining > 0 && remaining <= 120 && capturePeers(peer, group: groupMode == true) != nil && LanPacket.key(secret) != nil
     }
 
     private static func file() throws -> URL {
@@ -23,8 +32,8 @@ struct BroadcastRequest: Codable {
         return container.appendingPathComponent("pending-broadcast.json")
     }
 
-    static func prepare(peer: String, secret: String) throws {
-        let request = BroadcastRequest(peer: peer, secret: secret, expiresAt: Date().addingTimeInterval(90))
+    static func prepare(peer: String, secret: String, groupMode: Bool = false) throws {
+        let request = BroadcastRequest(peer: peer, secret: secret, expiresAt: Date().addingTimeInterval(90), groupMode: groupMode)
         guard request.valid else {
             throw NSError(domain: "SurSound.Broadcast", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid peer or fresh key."])
         }

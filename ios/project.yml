@@ -33,6 +33,8 @@ targets:
       - path: Shared
         excludes: [SurSound.entitlements]
       - path: SurSoundReceiver/LanPacket.swift
+      - path: SurSoundReceiver/SyncWire.swift
+      - path: SurSoundReceiver/GroupToneTransport.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.receiver.broadcast

@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Main-queue-only group test transport, with per-peer queue limits and a shared ciphertext.
+/// Caller-selected serial-queue group transport, with per-peer limits and shared ciphertext.
 final class GroupToneTransport {
     private final class Peer {
         let connection: NWConnection
@@ -22,7 +22,7 @@ final class GroupToneTransport {
     private(set) var replies: UInt64 = 0
     var peerCount: Int { peers.count }
 
-    init(addresses: [IPv4Address], wire: SyncWire) {
+    init(addresses: [IPv4Address], wire: SyncWire, queue: DispatchQueue = .main) {
         precondition((1...4).contains(addresses.count))
         self.wire = wire
         peers = addresses.map { Peer(address: $0) }
@@ -39,7 +39,7 @@ final class GroupToneTransport {
                 default: break
                 }
             }
-            peer.connection.start(queue: .main)
+            peer.connection.start(queue: queue)
         }
     }
 
