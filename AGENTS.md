@@ -1,7 +1,7 @@
 # SurSound development rules
 
 - Follow docs/requirements.md, docs/architecture.md and docs/git-workflow.md.
-- Maintain one authoritative task list: tasks/todo.md. Record actual evidence and blockers; do not mark unfinished work as complete.
+- GitHub Issues and their native sub-issues are the authoritative task list. See tasks/todo.md for the index and docs/git-workflow.md for lifecycle rules. Maintain one status label per issue and the appropriate milestone; record actual acceptance evidence and blockers. Never close a feature merely because its code or CI passed if required device acceptance remains.
 - Use personal Git identity Naos2w. Never use company credentials or alter global Git settings.
 - Work on feature/*, fix/*, refactor/* or chore/* from develop. No direct pushes, force pushes or deletion of main/develop; changes go through PR and required CI. Release/hotfix rules are in docs/git-workflow.md.
 - Do not bypass protections, fake approvals/checks, merge or release without applicable authorization.

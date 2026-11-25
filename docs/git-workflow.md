@@ -10,6 +10,15 @@
 
 Permanent branches main and develop must never be deleted or force-pushed. Release branches require PR/CI and cannot be force-pushed. Delete temporary branches after merge.
 
+## Issue-driven delivery
+
+- GitHub Issues and native sub-issues are the single source of truth for feature scope, acceptance criteria, status and evidence. GitHub Projects is a view of those issues, not a second backlog. Use repository Issues and Milestones while Projects authorization is pending.
+- Assign each task/feature an appropriate milestone, platform, priority and exactly one `status:*` label: `backlog`, `todo`, `in-progress`, `review`, `testing`, `blocked` or `done`.
+- Start from the latest `develop`; create one bounded feature/fix/chore branch and PR per task or coherent feature. Include its issue number in the PR body, not a growing multi-feature PR. Record implementation/CI evidence, remaining acceptance and blockers in the issue.
+- Require successful `bootstrap`, `android-build` and `ios-receiver` checks and resolved review conversations. Respect branch protection and authorized merge scope. After an authorized squash merge, sync local `develop` before starting the next independent feature; delete only the temporary merged branch when safe.
+- A successful merge may complete an implementation or CI sub-issue. Keep device acceptance and parent features open until their actual criteria are met; record measured results, then mark the task `status:done` and close it. PRs into non-default `develop` do not automatically close issues via closing keywords, so update the relevant issues explicitly.
+- Do not publish releases or promote to `main` without explicit release authorization and required acceptance.
+
 ## Protection
 
 Target active GitHub rulesets: main and develop require PR, passing actual registered required checks, resolved review conversations, no force push, no deletion, no bypass. release/* requires PR, CI, resolved conversations and no force push; deletion after merge is allowed. Initially 0 required approving reviews because this is a single-owner repository. Add independent reviewers when available.
