@@ -14,7 +14,7 @@ from .group_wire import MAX_PACKETS
 from .group_receiver import GroupReceiver
 from .group_rate import RateController, FrameMap, resample
 
-def run(bind, sender, key, wait=600):
+def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
     from .group_output import GroupOutput
     receiver = GroupReceiver(sender, key)
     timeline = receiver.timeline
@@ -32,6 +32,8 @@ def run(bind, sender, key, wait=600):
             print("READY V2 group | selected local interface | no playback until authenticated clock", flush=True)
             wait_end = time.perf_counter_ns()+wait*1_000_000_000
             last_print = time.perf_counter_ns()
+            if on_ready is not None:
+                on_ready()
             while True:
                 now = time.perf_counter_ns()
                 if timeline.first_arrival is None:
@@ -104,14 +106,17 @@ def run(bind, sender, key, wait=600):
             output.reap()
             output.close()
             timeline.pending.clear()
-            print("FINAL "+json.dumps(receiver.summary(output, rate, start_error, time.perf_counter_ns())), flush=True)
+            summary = receiver.summary(output, rate, start_error, time.perf_counter_ns())
+            print("FINAL "+json.dumps(summary), flush=True)
+            if on_final is not None:
+                on_final(summary)
     return timeline.failure is None and timeline.started
 
 def main():
     p = argparse.ArgumentParser(description="SurSound V2 shared-clock Windows test receiver")
     p.add_argument("--bind", required=True, type=local_ipv4)
     p.add_argument("--sender", required=True, type=local_ipv4)
-    p.add_argument("--wait", type=int, choices=range(1,601), default=600)
+    p.add_argument("--wait", type=int, choices=range(1,601), default=600, metavar="SECONDS")
     args = p.parse_args()
     if sys.platform != "win32":
         p.error("Windows group output requires WinMM")
