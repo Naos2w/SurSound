@@ -39,3 +39,7 @@ Start Android/iOS listeners with the sender's private IP and the same fresh key.
 - Validate the captured-audio group path on real devices; add hardware sample-rate drift correction, output latency calibration, signed session-end control and robust group membership.
 - Platform hardware-output scheduling and device-specific latency calibration. Main-loop timers and AudioTrack/AVAudioEngine queues alone cannot establish <=5 ms acoustic offset.
 - Real-device Wi-Fi/hotspot tests, measurable end-to-end delay and receiver-to-receiver offset under loss/jitter, host playback synchronization or receiver-only fallback (Issues #31/#32). No unverified measurement is recorded as a pass.
+
+## Separate live single-receiver transport (Issue #64)
+
+Android → Windows experimental long-duration mode uses separate authenticated SLC1 control and generation-derived v1 audio keys, with explicit same-path recovery and stop. It intentionally does not extend the V2 shared-clock packet cap or alter its scheduler. V1 live receiver pacing is not calibrated group synchronization. Hardware drift/output timing and multi-receiver acoustic acceptance remain separate.

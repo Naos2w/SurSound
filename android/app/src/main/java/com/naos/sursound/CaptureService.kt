@@ -137,6 +137,7 @@ class CaptureService : Service() {
     private inner class Session(private val owner: Long, private val target: ShareTarget?) {
         private var sender: CaptureSender? = null
         private var shareDeadline = Long.MAX_VALUE
+        private var lastNoticeCheck = 0L
         private var retainedShare: CaptureState.ShareStats? = null
         private val shareTimeout = Runnable {
             finish(if (target?.live == true) "60-minute live test limit reached." else "30-second LAN sharing limit reached.")
@@ -160,7 +161,17 @@ class CaptureService : Service() {
             override fun run() {
                 if (finished) return
                 try {
-                    if (SystemClock.elapsedRealtime() >= shareDeadline) {
+                    val elapsed = SystemClock.elapsedRealtime()
+                    if (target?.live == true && elapsed - lastNoticeCheck >= 1000) {
+                        lastNoticeCheck = elapsed
+                        val manager = requireNotNull(getSystemService(NotificationManager::class.java))
+                        if (!manager.areNotificationsEnabled() ||
+                            manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) {
+                            fail("Sharing notification disabled. Live sharing stopped.")
+                            return
+                        }
+                    }
+                    if (elapsed >= shareDeadline) {
                         shareTimeout.run()
                         return
                     }

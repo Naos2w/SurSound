@@ -80,6 +80,8 @@ internal class LiveCaptureSender(
                         val item = queue.poll()
                         if (item != null) {
                             try {
+                                gate.tick(System.nanoTime())
+                                updateGate(gate)
                                 val current = encoder
                                 if (running.get() && gate.phase == LiveSenderGate.Phase.ACTIVE &&
                                     item.generation == gate.generation && current != null) {
