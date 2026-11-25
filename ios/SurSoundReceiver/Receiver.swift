@@ -17,6 +17,7 @@ final class Receiver: ObservableObject {
     private var expected: IPv4Address?
     private var key: SymmetricKey?
     private var playout = ReceiverPlayoutBuffer()
+    private var group: GroupPlayout?
     private var playoutTimer: DispatchSourceTimer?
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
@@ -40,6 +41,7 @@ final class Receiver: ObservableObject {
         expected = address
         key = pairingKey
         playout = ReceiverPlayoutBuffer()
+        group = GroupPlayout(wire: SyncWire(key: pairingKey))
         count = 0
         rejected = 0
         packetCount = 0
@@ -130,10 +132,22 @@ final class Receiver: ObservableObject {
                 connection.cancel()
                 return
             }
-            if let data = data, let key = self.key, let packet = LanPacket.decode(data, key: key),
-               (self.selected == nil || self.selected == token),
-               self.playout.offer(sessionId: packet.session, sequence: packet.sequence, pcm: packet.pcm,
-                                  nowNanos: DispatchTime.now().uptimeNanoseconds) {
+            let now = DispatchTime.now().uptimeNanoseconds
+            var acceptedAudio = false
+            var acceptedControl = false
+            if let data = data, self.selected == nil || self.selected == token {
+                if !self.playout.started, data.count == SyncWire.audioBytes,
+                   let packet = self.group?.wire.openAudio(data) {
+                    acceptedAudio = self.group?.offer(packet, now: now) == true
+                } else if self.group?.started == true, self.selected == token,
+                          data.count == SyncWire.clockBytes, let reply = self.group?.wire.openClock(data) {
+                    acceptedControl = self.group?.acceptReply(reply, now: now) == true
+                } else if self.group?.started != true, let key = self.key, let packet = LanPacket.decode(data, key: key) {
+                    acceptedAudio = self.playout.offer(sessionId: packet.session, sequence: packet.sequence,
+                        pcm: packet.pcm, nowNanos: now)
+                }
+            }
+            if acceptedAudio {
                 if self.selected == nil {
                     self.selected = token
                     for (other, candidate) in Array(self.connections) where other != token {
@@ -143,11 +157,8 @@ final class Receiver: ObservableObject {
                 }
                 self.count += 1
                 self.startPlayoutTimer(generation: id)
-                self.publish(self.player?.isPlaying == true ? "Playing buffered authenticated PCM audio" : "Buffering authenticated PCM audio")
-            } else {
-                self.rejected += 1
-                self.publish(self.player?.isPlaying == true ? "Playing buffered authenticated PCM audio" : "Listening for authenticated local audio...")
-            }
+            } else if !acceptedControl { self.rejected += 1 }
+            self.publish(self.playoutMessage())
             self.read(connection, generation: id)
         }
     }
@@ -158,10 +169,16 @@ final class Receiver: ObservableObject {
         timer.schedule(deadline: .now(), repeating: .milliseconds(2), leeway: .milliseconds(1))
         timer.setEventHandler { [weak self] in
             guard let self = self, self.active, self.generation == id else { return }
-            guard let block = self.playout.poll(nowNanos: DispatchTime.now().uptimeNanoseconds) else { return }
+            let now = DispatchTime.now().uptimeNanoseconds
+            if self.group?.started == true, let token = self.selected,
+               let connection = self.connections[token], let probe = self.group?.nextProbe(now: now) {
+                connection.send(content: probe, completion: .contentProcessed { _ in })
+            }
+            let block = self.group?.started == true ? self.group?.poll(now: now) : self.playout.poll(nowNanos: now)
+            guard let block = block else { self.publish(self.playoutMessage()); return }
             let pcm = block.pcm ?? Data(repeating: 0, count: LanPacket.pcmBytes)
             if !self.play(pcm, generation: id) { self.rejected += 1 }
-            self.publish("Playing buffered authenticated PCM audio")
+            self.publish(self.playoutMessage())
         }
         playoutTimer = timer
         timer.resume()
@@ -191,12 +208,24 @@ final class Receiver: ObservableObject {
         return true
     }
 
+    private func playoutMessage() -> String {
+        if group?.started == true {
+            if let rtt = group?.roundTripNanos {
+                let timing = String(format: "%.1f ms RTT", rtt / 1_000_000)
+                return (player?.isPlaying == true ? "Playing shared-clock test (" : "Shared clock ready (") + timing + ")"
+            }
+            return "Waiting for authenticated clock; no group audio yet"
+        }
+        if player?.isPlaying == true { return "Playing buffered authenticated PCM audio" }
+        return playout.started ? "Buffering authenticated PCM audio" : "Listening for authenticated local audio..."
+    }
+
     private func publish(_ message: String, force: Bool = false) {
         guard force || Date().timeIntervalSince(lastPublish) >= 0.25 else { return }
         lastPublish = Date()
         status = message
         packetCount = count
-        drops = rejected + playout.missing + playout.schedulerSkipped
+        drops = rejected + playout.missing + playout.schedulerSkipped + (group?.missing ?? 0) + (group?.schedulerSkipped ?? 0)
     }
 
     func stop(_ message: String = "Stopped.") {
@@ -208,6 +237,7 @@ final class Receiver: ObservableObject {
         playoutTimer?.cancel()
         playoutTimer = nil
         playout.discardPending()
+        group?.clear()
         listener?.cancel()
         listener = nil
         for connection in connections.values { connection.cancel() }
@@ -225,5 +255,6 @@ final class Receiver: ObservableObject {
         pendingBuffers = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         publish(message, force: true)
+        group = nil
     }
 }
