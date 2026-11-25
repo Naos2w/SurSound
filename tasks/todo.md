@@ -6,7 +6,8 @@ GitHub Issues and their native sub-issues are the single source of truth. Do not
 - [Parent features](https://github.com/Naos2w/SurSound/issues?q=is%3Aissue+label%3Atype%3Afeature)
 - [Open acceptance tasks](https://github.com/Naos2w/SurSound/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Atask)
 - [Milestones](https://github.com/Naos2w/SurSound/milestones)
-- [GitHub Projects board setup (#6)](https://github.com/Naos2w/SurSound/issues/6) — pending Projects authorization.
+- [SurSound Development project board](https://github.com/users/Naos2w/projects/2)
+- [Project setup evidence (#6)](https://github.com/Naos2w/SurSound/issues/6)
 
 ## Feature index
 

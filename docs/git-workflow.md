@@ -12,7 +12,7 @@ Permanent branches main and develop must never be deleted or force-pushed. Relea
 
 ## Issue-driven delivery
 
-- GitHub Issues and native sub-issues are the single source of truth for feature scope, acceptance criteria, status and evidence. GitHub Projects is a view of those issues, not a second backlog. Use repository Issues and Milestones while Projects authorization is pending.
+- GitHub Issues and native sub-issues are the single source of truth for feature scope, acceptance criteria, status and evidence. [SurSound Development](https://github.com/users/Naos2w/projects/2) is a view of those issues, not a second backlog. Use repository Issues and Milestones when Projects is unavailable. Synchronize project Status with issue state and `status:*` labels: completed/closed → Done; active/review/testing → In Progress; backlog/todo/blocked → Todo. Testing denotes the acceptance stage, not evidence that a test is currently running.
 - Assign each task/feature an appropriate milestone, platform, priority and exactly one `status:*` label: `backlog`, `todo`, `in-progress`, `review`, `testing`, `blocked` or `done`.
 - Start from the latest `develop`; create one bounded feature/fix/chore branch and PR per task or coherent feature. Include its issue number in the PR body, not a growing multi-feature PR. Record implementation/CI evidence, remaining acceptance and blockers in the issue.
 - Require successful `bootstrap`, `android-build` and `ios-receiver` checks and resolved review conversations. Respect branch protection and authorized merge scope. After an authorized squash merge, sync local `develop` before starting the next independent feature; delete only the temporary merged branch when safe.
