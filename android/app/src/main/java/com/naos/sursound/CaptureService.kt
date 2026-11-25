@@ -129,6 +129,7 @@ class CaptureService : Service() {
     /** All projection/record operations and callbacks run on the same worker looper. */
     private inner class Session(private val owner: Long, private val target: ShareTarget?) {
         private var sender: CaptureShareSender? = null
+        private var retainedShare: CaptureState.ShareStats? = null
         private val shareTimeout = Runnable {
             finish("30-second LAN sharing limit reached.")
             main.post { stopSelf() }
@@ -164,7 +165,7 @@ class CaptureService : Service() {
                         lastRead = SystemClock.elapsedRealtimeNanos()
                         if (lastRead - lastPublish >= 100_000_000L) {
                             lastPublish = lastRead
-                            val message = sender?.let { "Sharing permitted playback to " + (target?.peers?.size ?: 0) + " peer(s) • sent: " + it.sent + " • dropped: " + it.dropped }
+                            val message = sender?.let { "Sharing permitted playback to " + (target?.peers?.size ?: 0) + " peer(s)" }
                                 ?: "Reading permitted playback audio"
                             publish(CaptureState.Phase.CAPTURING, message)
                         }
@@ -238,7 +239,8 @@ class CaptureService : Service() {
         }
 
         private fun publish(phase: CaptureState.Phase, message: String) {
-            CaptureState.update(owner, CaptureState.Snapshot(phase, message, latest, lastRead))
+            CaptureState.update(owner, CaptureState.Snapshot(phase, message, latest, lastRead,
+                sender?.stats() ?: retainedShare))
         }
 
         fun finish(message: String, error: Boolean = false) {
@@ -246,7 +248,11 @@ class CaptureService : Service() {
             finished = true
             worker.removeCallbacks(readNext)
             worker.removeCallbacks(shareTimeout)
-            sender?.close()
+            sender?.let { output ->
+                output.close()
+                output.awaitStopped()
+                retainedShare = output.stats()
+            }
             sender = null
             target?.key?.fill(0)
             record?.let { input ->

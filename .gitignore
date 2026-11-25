@@ -21,3 +21,8 @@ Thumbs.db
 /ios/SurSoundReceiver.xcodeproj/
 /ios/*.xcresult/
 **/xcuserdata/
+
+# Windows receiver local Python artifacts
+__pycache__/
+*.py[cod]
+/windows/.venv/
