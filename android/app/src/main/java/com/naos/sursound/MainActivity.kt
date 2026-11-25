@@ -198,6 +198,7 @@ class MainActivity : Activity() {
             if (shareDiscovery === discovery) shareDiscovery = null
         }
         dialog.setOnShowListener {
+            if (ticket == null) discovery.browse()
             if (!group) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 dialog.dismiss()
                 scanRequested = true

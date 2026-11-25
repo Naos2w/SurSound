@@ -135,6 +135,7 @@ class LanTestActivity : Activity() {
     override fun onStart() {
         super.onStart()
         main.post(refresh)
+        if (session == null && scannedTicket == null && !scanRequested) discovery.browse()
     }
 
     override fun onStop() {

@@ -28,6 +28,10 @@ Free test target: iOS 16+ arm64 receiver, discovery, single and shared-clock gro
 
 See [Windows receiver](../windows/README.md) for the reproducible local-only implementation. V1 synthetic and consented Android app-audio sessions were audibly confirmed on the earlier temporary MSI implementation; repeat acceptance with the committed source. The Windows v1 receiver uses a 160 ms prebuffer and output-buffer-driven pacing; it is not a v2 clock receiver and does not establish acoustic synchronization. Android diagnostics retain the local UDP send-call and drop statistics after stop or timeout, without recording keys or audio. A UDP send count alone does not prove delivery.
 
+## QR pairing acceptance (Issue #62)
+
+Use the Windows receiver's optional --discover --qr mode. Verify the Android receiver list, scan the local QR, review the address, and explicitly start either the test tone or system-consented app-audio sharing. Verify no transmission or capture starts merely by scanning; test QR expiry, wrong format/public IP, camera denial/cancel, manual fallback, QR window closure, and discovery withdrawal when the session starts/stops. Do not publish the private QR/key or raw audio. This acceptance applies to the V1 single receiver only; group and iOS QR flows remain pending.
+
 ## Record results
 
 For each run: test identifier, commit/CI artifact, models/OS, network topology without private addresses, test mode, authenticated packet/drop counts, audible outcome, measured offset with method and uncertainty where applicable, pass/fail/inconclusive, and blockers. Update existing issues after evidence; do not close hardware-dependent tasks on simulator/build success. Free install and complete iOS capture are separate acceptance scopes.
