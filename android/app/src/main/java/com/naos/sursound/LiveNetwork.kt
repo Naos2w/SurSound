@@ -2,7 +2,6 @@ package com.naos.sursound
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.net.IpPrefix
 import android.net.LinkAddress
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -26,7 +25,7 @@ internal class LiveNetwork private constructor(
         return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
             !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
             address in links.linkAddresses &&
-            IpPrefix(address.address, address.prefixLength).contains(peer)
+            Ipv4Subnet.contains(address.address, address.prefixLength, peer)
     }
 
     companion object {
@@ -41,7 +40,7 @@ internal class LiveNetwork private constructor(
             }
             val address = manager.getLinkProperties(network)?.linkAddresses?.firstOrNull {
                 it.address is Inet4Address && it.address != peer &&
-                    IpPrefix(it.address, it.prefixLength).contains(peer)
+                    Ipv4Subnet.contains(it.address, it.prefixLength, peer)
             } ?: error("Receiver must be on the same IPv4 Wi-Fi subnet.")
             return LiveNetwork(manager, network, address, peer).also {
                 check(it.stillValid()) { "Selected Wi-Fi changed before sharing." }
