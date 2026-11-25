@@ -47,6 +47,7 @@ internal class CaptureShareSender(
     private val timeline = CaptureTimeline()
     private val sentCount = AtomicLong()
     private val droppedCount = AtomicLong()
+    private val discardedQueuedCount = AtomicLong()
     @Volatile private var socket: DatagramSocket? = null
     @Volatile var failure: String? = null
         private set
@@ -160,7 +161,25 @@ internal class CaptureShareSender(
         clearQueue()
     }
 
+    /** Wait only briefly after socket closure; never block capture teardown indefinitely. */
+    fun awaitStopped(timeoutMillis: Long = 250) {
+        require(timeoutMillis in 1..500)
+        try {
+            worker.join(timeoutMillis)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+    }
+
+    fun stats(): CaptureState.ShareStats = CaptureState.ShareStats(
+        group, targets.size, sentCount.get(), droppedCount.get(), discardedQueuedCount.get(), !worker.isAlive
+    )
+
     private fun clearQueue() {
-        while (true) (queue.poll() ?: break).pcm.fill(0)
+        while (true) {
+            val item = queue.poll() ?: break
+            item.pcm.fill(0)
+            discardedQueuedCount.addAndGet(targets.size.toLong())
+        }
     }
 }

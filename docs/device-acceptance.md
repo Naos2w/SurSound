@@ -24,6 +24,10 @@ Free test target: iOS 16+ arm64 receiver, discovery, single and shared-clock gro
 | Acoustic timing | Use the synthetic 440 Hz pulse diagnostic. Place both receiving speakers next to a single recorder at approximately equal distance; preferably use independent channels or repeat with each source isolated to identify the onsets. Record at 48 kHz or greater, compare onset timestamps for at least 20 identifiable paired pulses, report median and max/p95 absolute offset and measurement uncertainty. Repeat under Wi-Fi/hotspot. A single mixed waveform may be ambiguous; label such data inconclusive. Target <=5 ms receiver-to-receiver offset; distinguish network RTT, presentation lead, software scheduling, acoustic offset and host latency. Do not publish raw captured app audio. | #31 |
 | Host sync | Measure host separately; if host playback cannot be controlled, document receiver-only fallback. | #32 |
 
+## Windows single-receiver diagnostic
+
+See [Windows receiver](../windows/README.md) for the reproducible local-only implementation. V1 synthetic and consented Android app-audio sessions were audibly confirmed on the earlier temporary MSI implementation; repeat acceptance with the committed source. The Windows v1 receiver uses a 160 ms prebuffer and output-buffer-driven pacing; it is not a v2 clock receiver and does not establish acoustic synchronization. Android diagnostics retain the local UDP send-call and drop statistics after stop or timeout, without recording keys or audio. A UDP send count alone does not prove delivery.
+
 ## Record results
 
 For each run: test identifier, commit/CI artifact, models/OS, network topology without private addresses, test mode, authenticated packet/drop counts, audible outcome, measured offset with method and uncertainty where applicable, pass/fail/inconclusive, and blockers. Update existing issues after evidence; do not close hardware-dependent tasks on simulator/build success. Free install and complete iOS capture are separate acceptance scopes.
