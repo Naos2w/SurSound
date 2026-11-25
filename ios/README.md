@@ -41,3 +41,11 @@ Use the explicit group test with 1–4 receiver IPs and one fresh shared test ke
 
 ## Captured app-audio group diagnostic
 In the app, enter 1–4 distinct comma-separated receiver IPs and a fresh shared key, start all selected receivers, then **Prepare group app-audio share (30 s)** and explicitly start the system broadcast. The extension uses the group transport on a dedicated serial network queue, only processing permitted .audioApp PCM. Slot numbers are reserved before per-peer send admission; expired blocks are discarded. V1 single-device sharing remains available. Stop with the system broadcast control; already transmitted buffered audio may briefly finish playing. Legacy ReplayKit physical signing, permissions, source compatibility, timing and drift remain unverified. Record actual device evidence in [Issue #30](https://github.com/Naos2w/SurSound/issues/30) and [Issue #31](https://github.com/Naos2w/SurSound/issues/31).
+
+## Windows-only device testing (free Apple Account)
+
+The separate `SurSoundDeviceTest` target uses the same LAN receiver, discovery, v1/v2 test-tone senders and shared-clock group playback, but intentionally excludes the ReplayKit upload extension and App Group entitlement. It cannot capture other apps' audio on iOS. The complete `SurSoundReceiver` app with its extension is unchanged and still needs compatible provisioning/signing and real-device validation.
+
+GitHub Actions on the public repository builds a device (iphoneos arm64) version and uploads `sursound-ios-device-test-unsigned`. Unzip that Actions artifact to obtain `SurSoundDeviceTest-unsigned.ipa` and its SHA-256 checksum. This is **unsigned**, not directly installable. Verify the checksum and use a trusted local Windows sideloading tool with your own Apple Account and device; never send passwords, certificates or two-factor codes to the agent or public CI. Free personal provisioning typically expires after seven days and allows three active sideloaded apps. App Group capability is not assumed available under free provisioning. The test target deliberately avoids it rather than stripping entitlements from the full app.
+
+See [Windows and physical device acceptance](../docs/device-acceptance.md). The CI IPA and simulator reports are not evidence of successful physical installation or synchronized speaker output.

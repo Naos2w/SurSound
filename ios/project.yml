@@ -43,6 +43,19 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Shared/SurSound.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+  SurSoundDeviceTest:
+    type: application
+    platform: iOS
+    sources:
+      - path: SurSoundReceiver
+        excludes: [Info.plist, BroadcastPicker.swift]
+      - path: Shared/PacketSender.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.naos.sursound.devicetest
+        INFOPLIST_FILE: DeviceTest/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEVICE_TEST"
   SurSoundReceiverTests:
     type: bundle.unit-test
     platform: iOS
@@ -61,3 +74,7 @@ schemes:
         SurSoundBroadcast: all
     test:
       targets: [SurSoundReceiverTests]
+  SurSoundDeviceTest:
+    build:
+      targets:
+        SurSoundDeviceTest: all
