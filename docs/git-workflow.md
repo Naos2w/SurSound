@@ -41,6 +41,15 @@ Conventional Commits (feat, fix, docs, refactor, test, chore); SemVer tags vMAJO
 
 These are intended milestones, not completed releases.
 
+### Versioned development packages
+
+- `VERSION` is the target milestone's numeric version (currently `0.4.0`), not evidence of a completed release. CI uses `<VERSION>-dev.<buildCode>`, where buildCode = 100 × the CI workflow run number + run attempt (1–99). Each newer run or rerun within that run has a distinguishable build number. A rerun of an older workflow run is not necessarily newer than a later workflow run.
+- Android embeds the same development version as versionName and buildCode as versionCode; locally built unsigned/debug variants without CI metadata use `<VERSION>-dev.local` / code 1 and are not distributed as versioned CI artifacts.
+- iOS embeds numeric marketing version and a three-component numeric CFBundleVersion derived from the same run/attempt. The full app, extension and separate device-test target receive identical CI version settings. The local Xcode project fallback is development-only and should be kept aligned with VERSION when moving to a new milestone.
+- File names: `SurSound-v0.4.0-dev.<buildCode>.apk` and `SurSound-v0.4.0-dev.<buildCode>-device-test-unsigned.ipa`. CI artifact group names remain stable; the extracted packages are accompanied by BUILD-INFO.json (commit and version metadata) and SHA256SUMS.txt. Do not relabel an old build with an untrue embedded version.
+- For Android physical testing, transfer the versioned APK only, verify the checksum, and let the owner install manually. Do not force install/downgrade or uninstall to work around signatures. A debug signing key from a fresh runner can differ; version numbers alone do not guarantee in-place upgrades.
+- Stable tags and store releases require separate authorization and acceptance. A development version is not a release.
+
 ## CI
 
 Bootstrap CI verifies project structure and repository hygiene only. Add actual lint, typecheck, unit tests, Android build, iOS build, audio integration and security checks as implementation exists. Do not substitute placeholder checks for functional validation.

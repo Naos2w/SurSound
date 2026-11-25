@@ -3,7 +3,7 @@
 Standalone native Kotlin diagnostic, not the production UI. Android 10+ (API 29), compile/target API 35, JDK 17, Gradle 8.9, AGP 8.7.3.
 
 ## Build
-From android/: `gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` with the stated Gradle/SDK installed. CI provisions Gradle explicitly. Debug APK: app/build/outputs/apk/debug/app-debug.apk.
+From android/: `gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` with the stated Gradle/SDK installed. CI provisions Gradle explicitly. Local debug APK: app/build/outputs/apk/debug/app-debug.apk. CI uploads a uniquely versioned SurSound APK with BUILD-INFO.json and SHA256SUMS.txt; use the versioned artifact for physical acceptance. Transfer only to the phone's Download folder and install manually.
 
 ## Device acceptance (not yet verified)
 1. Install the debug APK on an Android 10+ device. Start capture, grant audio permission and confirm the OS MediaProjection prompt. No screen image is obtained.

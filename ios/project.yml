@@ -5,6 +5,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Local-only fallback. CI passes VERSION and the generated numeric build.
+    MARKETING_VERSION: "0.4.0"
+    CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 targets:
   SurSoundReceiver:

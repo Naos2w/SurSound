@@ -7,8 +7,8 @@
     <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>UILaunchScreen</key><dict/>
     <key>NSLocalNetworkUsageDescription</key><string>Discover SurSound receivers and exchange encrypted audio with a local device you choose.</string>
     <key>NSBonjourServices</key><array><string>_sursound._udp</string></array>
