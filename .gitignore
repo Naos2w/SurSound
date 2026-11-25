@@ -14,3 +14,10 @@ node_modules/
 !.env.example
 .DS_Store
 Thumbs.db
+
+.kotlin/
+
+# Generated iOS diagnostic project and local test output
+/ios/SurSoundReceiver.xcodeproj/
+/ios/*.xcresult/
+**/xcuserdata/

@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">SurSound Capture PoC</string>
+    <string name="title">SurSound — audio capture PoC</string>
+    <string name="description">Diagnostic only. Grant Android playback-capture consent, then play permitted audio in another app. Capture alone does not transmit. Sharing requires explicit consent, a local peer and a fresh pairing key. No microphone input, screen frames or audio storage.</string>
+    <string name="start_capture">Start capture</string>
+    <string name="stop_capture">Stop capture</string>
+    <string name="lan_test">LAN test tone</string>
+    <string name="notification_title">SurSound is capturing permitted playback</string>
+    <string name="notification_text">Audio diagnostics only. Tap Stop to end the session.</string>
+    <string name="channel_name">Audio capture</string>
+    <string name="share_capture">Share permitted app audio (30 s)</string>
+    <string name="share_peer">Receiver IPv4 address</string>
+    <string name="share_key">32-character pairing key</string>
+    <string name="share_warning">Start the receiver first. Only permitted playback is sent, encrypted to this local peer, for up to 30 seconds. Stop at any time using the foreground notification. Use a fresh key and share it privately.</string>
+    <string name="share_continue">Continue to Android consent</string>
+    <string name="share_invalid">Invalid local address or pairing key.</string>
+    <string name="share_permission_required">Sharing needs capture consent, visible notifications and a fresh pairing key. Please start again.</string>
+    <string name="share_notification_title">SurSound is sharing permitted app audio</string>
+    <string name="share_notification_text">Encrypted local audio sharing, limited to 30 seconds. Tap Stop to end.</string>
+    <string name="find_receivers">Find local receivers (15 s)</string>
+</resources>

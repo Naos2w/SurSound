@@ -27,4 +27,68 @@ jobs:
             test -s "$file"
           done
           git diff --check HEAD
-          echo "Bootstrap structure verified; application tests not yet implemented."
+          echo "Bootstrap structure verified; see android-build for application checks."
+
+  android:
+    name: android-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '12266719'
+          packages: 'platform-tools platforms;android-35 build-tools;34.0.0'
+      - name: Test, lint and build Android PoC
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sursound-android-capture-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-verification-reports
+          path: |
+            android/app/build/reports/tests/
+            android/app/build/reports/lint-results-debug.*
+            android/app/build/test-results/
+
+  ios:
+    name: ios-receiver
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate native iOS project
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Build and test on an available iPhone simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
+          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundReceiver -configuration Debug -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO -resultBundlePath TestResults.xcresult test
+      - name: Upload iOS test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-receiver-results
+          path: ios/TestResults.xcresult
+          if-no-files-found: warn
