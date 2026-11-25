@@ -34,7 +34,7 @@ class LanTestActivity : Activity() {
     private val refresh = object : Runnable {
         override fun run() {
             session?.status?.let { state ->
-                status.text = state.message + "\nPackets: " + state.packets + "\nMissing/rejected/output drops: " + state.dropped
+                status.text = state.message + "\nPackets: " + state.packets + "\nMissing/rejected/scheduler/output drops: " + state.dropped
                 if (!state.running) {
                     session = null
                     receiving = false

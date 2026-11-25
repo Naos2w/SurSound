@@ -89,9 +89,9 @@ internal class LanTestSession private constructor() {
 
     private fun receive(peer: InetAddress, key: ByteArray) {
         val decoder = LanPacketCodec.Decoder(key)
-        val replay = LanPacketCodec.ReplayGuard()
+        val playout = ReceiverPlayoutBuffer()
         attach(DatagramSocket(PORT)).use { udp ->
-            udp.soTimeout = 250
+            udp.soTimeout = 100
             val min = AudioTrack.getMinBufferSize(LanPacketCodec.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO,
                 AudioFormat.ENCODING_PCM_16BIT)
             check(min > 0) { "Unsupported output format" }
@@ -113,31 +113,59 @@ internal class LanTestSession private constructor() {
                 var rejected = 0L
                 var outputDrops = 0L
                 var playing = false
+                val silence = ByteArray(LanPacketCodec.PCM_BYTES)
                 status = Status("Listening for authenticated audio packets")
                 while (!stopped.get() && System.nanoTime() - start < 45_000_000_000L) {
+                    // Once anchored, poll on timeout too so a lost datagram cannot stall audio.
+                    udp.soTimeout = if (playout.started) 2 else 100
                     datagram.length = storage.size
-                    try { udp.receive(datagram) } catch (_: SocketTimeoutException) { continue }
+                    var changed = false
+                    try {
+                        udp.receive(datagram)
+                        if (stopped.get()) break
+                        val packet = if (datagram.address == peer) decoder.decode(storage.copyOf(datagram.length)) else null
+                        if (packet == null) {
+                            rejected++
+                        } else if (playout.offer(packet.session, packet.sequence, packet.pcm, System.nanoTime())) {
+                            count++
+                        } else {
+                            packet.pcm.fill(0)
+                            rejected++
+                        }
+                        changed = true
+                    } catch (_: SocketTimeoutException) {
+                        // The local monotonic playout clock still advances.
+                    }
                     if (stopped.get()) break
-                    val packet = if (datagram.address == peer) decoder.decode(storage.copyOf(datagram.length)) else null
-                    if (packet == null || !replay.accept(packet)) {
-                        rejected++
-                        status = status.copy(dropped = rejected + outputDrops + replay.missing)
-                        continue
+                    val block = playout.poll(System.nanoTime())
+                    if (block != null) {
+                        if (!playing) {
+                            track.play()
+                            playing = true
+                        }
+                        val pcm = block.pcm ?: silence
+                        val written = try {
+                            track.write(pcm, 0, pcm.size, AudioTrack.WRITE_NON_BLOCKING)
+                        } finally {
+                            block.pcm?.fill(0)
+                        }
+                        check(written >= 0) { "AudioTrack write error" }
+                        if (written != pcm.size) outputDrops++
+                        changed = true
                     }
-                    if (!playing) {
-                        track.play()
-                        playing = true
+                    if (changed) {
+                        val message = if (playing) "Playing buffered authenticated LAN audio"
+                            else if (playout.started) "Listening — buffering authenticated audio"
+                            else "Listening for authenticated audio packets"
+                        status = Status(message, count, rejected + outputDrops + playout.missing + playout.schedulerSkipped)
                     }
-                    val written = track.write(packet.pcm, 0, packet.pcm.size, AudioTrack.WRITE_NON_BLOCKING)
-                    val size = packet.pcm.size
-                    packet.pcm.fill(0)
-                    check(written >= 0) { "AudioTrack write error" }
-                    if (written != size) outputDrops++
-                    count++
-                    status = Status("Playing authenticated LAN audio", count, rejected + outputDrops + replay.missing)
                 }
             } finally {
-                runCatching { if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop() }
+                playout.discardPending()
+                runCatching {
+                    if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
+                    track.flush()
+                }
                 runCatching { track.release() }
             }
         }

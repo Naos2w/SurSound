@@ -62,7 +62,7 @@ struct ReceiverView: View {
                         .disabled(!receiver.active)
                     Text(receiver.status)
                     Text("Authenticated packets: \(receiver.packetCount)")
-                    Text("Missing / rejected / output drops: \(receiver.drops)")
+                    Text("Missing / rejected / scheduler / output drops: \(receiver.drops)")
                 }
                 Section("Send synthetic tone") {
                     Button("Send test tone (30 seconds)") {
