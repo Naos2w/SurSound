@@ -1,0 +1,111 @@
+import Foundation
+
+/// A v2 receiver waits for authenticated clock samples; never silently switches to v1.
+struct GroupPlayout {
+    let wire: SyncWire
+    private var session: UInt64?
+    private var origin: Int64 = 0
+    private var firstSequence: UInt32 = 0
+    private var firstArrival: UInt64 = 0
+    private var lastProbe: UInt64?
+    private var outstanding: SyncWire.Clock?
+    private var attempts = 0
+    private var sampleCount = 0
+    private var failed = false
+    private var estimator = ClockOffsetEstimator()
+    private var pending: [UInt32: Data] = [:]
+    private var buffer = ReceiverPlayoutBuffer()
+    var started: Bool { session != nil }
+    var ready: Bool { buffer.started }
+    var missing: UInt64 { buffer.missing }
+    var schedulerSkipped: UInt64 { buffer.schedulerSkipped }
+    private(set) var roundTripNanos: Double?
+
+    init(wire: SyncWire) { self.wire = wire }
+
+    mutating func offer(_ packet: SyncWire.Audio, now: UInt64) -> Bool {
+        guard !failed, packet.sequence < SyncWire.maxPackets, packet.pcm.count == LanPacket.pcmBytes else { return false }
+        if session == nil {
+            session = packet.session
+            origin = packet.origin
+            firstSequence = packet.sequence
+            firstArrival = now
+        }
+        guard session == packet.session, origin == packet.origin else { return false }
+        if ready {
+            return buffer.offer(sessionId: packet.session, sequence: packet.sequence, pcm: packet.pcm, nowNanos: now)
+        }
+        guard packet.sequence >= firstSequence, packet.sequence - firstSequence < 64,
+              pending[packet.sequence] == nil else { return false }
+        pending[packet.sequence] = packet.pcm
+        return true
+    }
+
+    mutating func nextProbe(now: UInt64) -> Data? {
+        guard let id = session, now <= UInt64(Int64.max) else { return nil }
+        settle(now: now)
+        guard !ready, !failed, attempts < 12 else { return nil }
+        if let previous = lastProbe, now - previous < 25_000_000 { return nil }
+        if let request = outstanding, now - UInt64(request.t1) < 80_000_000 { return nil }
+        let request = SyncWire.Clock(kind: SyncWire.request, session: id,
+            nonce: UInt64.random(in: UInt64.min...UInt64.max), t1: Int64(now), t2: 0, t3: 0)
+        lastProbe = now
+        outstanding = request
+        attempts += 1
+        return wire.sealClock(request)
+    }
+
+    mutating func acceptReply(_ reply: SyncWire.Clock, now: UInt64) -> Bool {
+        guard let request = outstanding, !ready, !failed, now <= UInt64(Int64.max),
+              reply.kind == SyncWire.reply, reply.session == session, reply.session == request.session,
+              reply.nonce == request.nonce, reply.t1 == request.t1 else { return false }
+        outstanding = nil
+        let exchange = ClockExchange(t1: reply.t1, t2: reply.t2, t3: reply.t3, t4: Int64(now))
+        let rtt = (Double(now) - Double(reply.t1)) - (Double(reply.t3) - Double(reply.t2))
+        guard (0...100_000_000).contains(rtt), estimator.add(exchange) else { return false }
+        sampleCount += 1
+        settle(now: now)
+        return true
+    }
+
+    private mutating func settle(now: UInt64) {
+        guard let id = session, !ready, !failed else { return }
+        if sampleCount == 0 {
+            if attempts >= 12, let request = outstanding, now - UInt64(request.t1) >= 80_000_000 {
+                failed = true
+                clear()
+            }
+            return
+        }
+        guard sampleCount >= 3 || now - firstArrival >= 120_000_000,
+              let estimate = estimator.estimate() else { return }
+        let deadline = estimate.receiverTimeFor(senderTimeNanos: origin) +
+            Double(firstSequence) * Double(ReceiverPlayoutBuffer.frameNanos)
+        let lead = deadline - Double(now)
+        guard deadline.isFinite, (-500_000_000...1_000_000_000).contains(lead),
+              deadline >= 0, deadline < Double(Int64.max) else {
+            failed = true
+            clear()
+            return
+        }
+        for (sequence, pcm) in pending.sorted(by: { $0.key < $1.key }) {
+            _ = buffer.offer(sessionId: id, sequence: sequence, pcm: pcm, nowNanos: now,
+                             firstDeadlineNanos: UInt64(deadline))
+        }
+        pending.removeAll()
+        outstanding = nil
+        roundTripNanos = estimate.roundTripNanos
+    }
+
+    mutating func poll(now: UInt64) -> ReceiverPlayoutBuffer.Block? {
+        settle(now: now)
+        guard let block = buffer.poll(nowNanos: now) else { return nil }
+        if block.sequence >= Int64(SyncWire.maxPackets) {
+            buffer.discardPending()
+            return nil
+        }
+        return block
+    }
+
+    mutating func clear() { pending.removeAll(); buffer.discardPending() }
+}

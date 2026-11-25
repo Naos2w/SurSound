@@ -59,13 +59,13 @@ internal class ReceiverPlayoutBuffer(
     var schedulerSkipped = 0L
         private set
 
-    fun offer(sessionId: Long, sequence: Int, pcm: ByteArray, nowNanos: Long): Boolean {
+    fun offer(sessionId: Long, sequence: Int, pcm: ByteArray, nowNanos: Long, firstDeadlineNanos: Long? = null): Boolean {
         if (sequence < 0 || sequence == Int.MAX_VALUE || pcm.size != LanPacketCodec.PCM_BYTES) return false
         val index = sequence.toLong()
         if (session == null) {
             session = sessionId
             expected = index
-            deadline = nowNanos + initialDelayNanos
+            deadline = firstDeadlineNanos ?: (nowNanos + initialDelayNanos)
         }
         if (session != sessionId || index < expected || index - expected >= windowPackets ||
             pending.containsKey(index)) return false
