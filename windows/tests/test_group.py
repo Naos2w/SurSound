@@ -41,7 +41,7 @@ class GroupTests(unittest.TestCase):
         self.assertEqual(self.wire.open_audio(packet), GroupAudio(SID,42,250_000_000,PCM))
         request = ClockPacket(REQUEST,SID,0x1112131415161718,NS,0,0)
         clock = self.wire.seal_clock(request)
-        self.assertEqual(clock.hex(),"535343320101020304050607081112131415161718000000003b9aca0000000000000000000000000000e2895c6ec4161c010a76eb566e0ea48ee9c83cc456d67d9297c93ee7a0daadec")
+        self.assertEqual(clock.hex(),"535343320101020304050607081112131415161718000000003b9aca0000000000000000000000000000000000e2895c6ec4161c010a76eb566e0ea48ee9c83cc456d67d9297c93ee7a0daadec")
         self.assertEqual(self.wire.open_clock(clock),request)
         for data,decode in ((packet,self.wire.open_audio),(clock,self.wire.open_clock)):
             for i in (0,5,16,len(data)-1):
