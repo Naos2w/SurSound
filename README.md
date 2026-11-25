@@ -14,6 +14,7 @@ Phase 0 — technical feasibility. No working app, supported-source guarantee or
 - [Architecture](docs/architecture.md)
 - [Git workflow](docs/git-workflow.md)
 - [GitHub Issues — authoritative task tracking](https://github.com/Naos2w/SurSound/issues)
+- [SurSound Development project board](https://github.com/users/Naos2w/projects/2)
 - [Milestone roadmap](https://github.com/Naos2w/SurSound/milestones)
 - [Task tracking index](tasks/todo.md)
 - [Agent instructions](AGENTS.md)
