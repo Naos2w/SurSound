@@ -156,17 +156,30 @@ class RateTests(unittest.TestCase):
             self.assertEqual(out[-4:],pcm[-4:])
 
     def test_bounded_rate_direction_and_stale_position(self):
-        for drift in (-8_000_000,8_000_000):
+        for drift in (-500,500):
             r=RateController()
-            self.assertTrue(r.observe(48000,48000,NS+10_000_000,100,0,0))
-            self.assertFalse(r.observe(49000,49000,NS+20_000_000,100,0,0))
-            self.assertTrue(r.observe(96000,96000,2*NS+10_000_000+drift,100,0,0))
+            for i in range(31):
+                source=i*9600+48000
+                sampled=NS+i*200_000_000+10_000_000+round(i*200_000_000*drift/1_000_000)
+                self.assertTrue(r.observe(source,source,sampled,100,0,0))
+                if i<20:
+                    self.assertEqual(r.ppm,0)
+            self.assertTrue(r.ppm*drift>0)
             self.assertLessEqual(abs(r.ppm),1000)
-            self.assertFalse(r.observe(144000,144000,3*NS,10_000_000,0,0))
-            counts=[r.frames_for(960,2*NS+20_000_000) for _ in range(20)]
+            self.assertFalse(r.observe(1,1,r.last_time+1,10_000_000,0,0))
+            counts=[r.frames_for(960,r.last_time+1) for _ in range(40)]
             self.assertTrue(all(959<=x<=961 for x in counts))
-            self.assertTrue((sum(counts)-20*960)*drift<0)
-            self.assertEqual(r.frames_for(960,5*NS),960)
+            self.assertTrue((sum(counts)-40*960)*drift<0)
+            self.assertEqual(r.frames_for(960,r.last_time+3*NS),960)
+
+    def test_constant_coarse_driver_phase_does_not_immediately_adjust(self):
+        r=RateController()
+        for i in range(10):
+            source=i*9600+48000
+            phase=30_000_000 if i%2 else 10_000_000
+            self.assertTrue(r.observe(source,source,NS+i*200_000_000+phase,100,0,0))
+        self.assertEqual(r.ppm,0)
+
 
 if __name__ == "__main__":
     unittest.main()

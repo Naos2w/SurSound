@@ -13,6 +13,7 @@ from .protocol import local_ipv4, PORT
 from .group_wire import MAX_PACKETS
 from .group_receiver import GroupReceiver
 from .group_rate import RateController, FrameMap, resample
+from .start_wait import StartWait, NEAR_START_NS
 
 def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
     from .group_output import GroupOutput
@@ -28,6 +29,7 @@ def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
         sock.bind((bind, PORT))
         sock.setblocking(False)
         output = GroupOutput()
+        waiter = StartWait()
         try:
             print("READY V2 group | selected local interface | no playback until authenticated clock", flush=True)
             wait_end = time.perf_counter_ns()+wait*1_000_000_000
@@ -45,6 +47,19 @@ def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
                     break
                 if timeline.failure:
                     break
+                # A Windows socket timeout can oversleep by a scheduler quantum. Once
+                # safely prefilled, use a bounded dedicated timer for the one-shot start.
+                if timeline.ready and not timeline.started and len(output.q) >= 2 and now >= timeline.start_deadline-NEAR_START_NS:
+                    waiter.wait_until(timeline.start_deadline)
+                    now = time.perf_counter_ns()
+                    timeline.settle(now)
+                    if timeline.start_due(now,len(output.q)):
+                        before, after = output.restart()
+                        start_error = before-timeline.start_deadline
+                        print("START driver request error ns:", start_error, "call duration ns:", after-before,
+                              "wait method:", waiter.method, flush=True)
+                    if timeline.failure:
+                        break
                 readable, _, _ = select.select([sock], [], [], .001 if timeline.ready else .005)
                 if readable:
                     for _ in range(64):
@@ -89,7 +104,7 @@ def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
                     before, after = output.restart()
                     start_error = before-timeline.start_deadline
                     print("START driver request error ns:", start_error,
-                          "call duration ns:", after-before, flush=True)
+                          "call duration ns:", after-before, "wait method: receive_loop", flush=True)
                 if timeline.failure:
                     break
                 if timeline.started and not output.q:
@@ -103,10 +118,12 @@ def run(bind, sender, key, wait=600, *, on_ready=None, on_final=None):
         except KeyboardInterrupt:
             timeline.fail("Stopped by user")
         finally:
+            waiter.close()
             output.reap()
             output.close()
             timeline.pending.clear()
             summary = receiver.summary(output, rate, start_error, time.perf_counter_ns())
+            summary['start_timer'] = waiter.method
             print("FINAL "+json.dumps(summary), flush=True)
             if on_final is not None:
                 on_final(summary)

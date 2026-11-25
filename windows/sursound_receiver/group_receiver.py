@@ -62,7 +62,8 @@ class GroupReceiver:
                     refinement_count=t.refinements, software_start_error_ns=start_error,
                     driver_phase_baseline_ns=rate.baseline, relative_driver_phase_ns=rate.phase,
                     rate_adjustment_ppm=round(rate.ppm, 2),
-                    position_observations=rate.observations,
+                    position_observations=rate.observations, estimated_driver_drift_ppm=rate.drift_ppm,
+                    rejected_driver_trends=rate.rejected_trends,
                     adjusted_frames=rate.adjusted_frames, output_submitted=output.submitted,
                     output_completed=output.finished, output_dropped=output.dropped,
                     played=t.started, failure=t.failure)

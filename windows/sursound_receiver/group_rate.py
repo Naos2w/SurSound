@@ -3,6 +3,7 @@ from collections import deque
 from dataclasses import dataclass
 import struct
 import math
+import statistics
 
 RATE = 48000
 NS = 1_000_000_000
@@ -46,33 +47,60 @@ class RateController:
         self.ppm = self.fraction = 0.0
         self.observations = 0
         self.adjusted_frames = 0
+        self.history = deque(maxlen=32)
+        self.drift_ppm = None
+        self.rejected_trends = 0
+        self.last_update = None
 
     def observe(self, played, source_frame, sampled_at, uncertainty_ns, origin, offset):
         if source_frame is None or not 0 <= uncertainty_ns <= 5_000_000:
             return False
-        if self.last_time is not None and (sampled_at-self.last_time < 200_000_000 or played <= self.last_position):
+        if self.last_time is not None and (sampled_at-self.last_time < 150_000_000 or played <= self.last_position):
             return False
         phase = sampled_at - (origin-offset+source_frame*NS/RATE)
         if not math.isfinite(phase) or abs(phase) > NS:
             return False
-        if self.baseline is None:
-            self.baseline = phase
-        residual = phase-self.baseline
-        if abs(residual) > 100_000_000:
+        if self.baseline is not None and abs(phase-self.baseline) > 100_000_000:
             return False
+        if self.last_time is not None and sampled_at-self.last_time > 2*NS:
+            self.history.clear()
+            self.baseline = self.phase = self.drift_ppm = self.last_update = None
+            self.ppm = self.fraction = 0.0
         self.last_time, self.last_position = sampled_at, played
-        self.phase = residual
-        # Positive lag -> shorten subsequent PCM slightly; negative lag -> lengthen.
-        target = max(-MAX_PPM,min(MAX_PPM,residual/2_000_000_000*1_000_000))
-        self.ppm = 0.75*self.ppm + 0.25*target
+        self.history.append((sampled_at, phase))
         self.observations += 1
+        # Driver positions can move in coarse 10–30 ms steps. Do not treat a
+        # single jump or startup offset as sample-rate error. Compare separated
+        # median windows and adapt no faster than once per second.
+        if len(self.history) >= 5:
+            recent = list(self.history)[-5:]
+            median_phase = statistics.median(x[1] for x in recent)
+            if self.baseline is None:
+                self.baseline = median_phase
+            self.phase = median_phase-self.baseline
+        if (len(self.history) >= 21 and
+                (self.last_update is None or sampled_at-self.last_update >= NS)):
+            first, last = list(self.history)[:5], list(self.history)[-5:]
+            span = statistics.median(x[0] for x in last)-statistics.median(x[0] for x in first)
+            if span >= 3*NS:
+                trend = (statistics.median(x[1] for x in last)-
+                         statistics.median(x[1] for x in first))/span*1_000_000
+                self.last_update = sampled_at
+                # Reject implausible trends rather than chase discontinuities.
+                if abs(trend) <= 2500:
+                    self.drift_ppm = trend
+                    self.ppm = max(-MAX_PPM,min(MAX_PPM,self.ppm+0.20*trend))
+                else:
+                    self.rejected_trends += 1
+                    self.drift_ppm = None
+                    self.ppm *= .5
         return True
 
     def frames_for(self, n, now):
         if not 0 < n <= 960:
             raise ValueError("Invalid input frames")
         # No valid recent driver position: do not extrapolate a stale correction.
-        ppm = self.ppm if self.last_time is not None and now-self.last_time <= 2*NS else 0.0
+        ppm = self.ppm if self.last_time is not None and 0 <= now-self.last_time <= 2*NS else 0.0
         self.fraction += -n*ppm/1_000_000
         adjustment = int(self.fraction)
         adjustment = max(-1,min(1,adjustment))
