@@ -12,6 +12,7 @@ struct GroupPlayout {
     private var attempts = 0
     private var sampleCount = 0
     private var failed = false
+    private var ended = false
     private var estimator = ClockOffsetEstimator()
     private var pending: [UInt32: Data] = [:]
     private var buffer = ReceiverPlayoutBuffer()
@@ -24,7 +25,7 @@ struct GroupPlayout {
     init(wire: SyncWire) { self.wire = wire }
 
     mutating func offer(_ packet: SyncWire.Audio, now: UInt64) -> Bool {
-        guard !failed, packet.sequence < SyncWire.maxPackets, packet.pcm.count == LanPacket.pcmBytes else { return false }
+        guard !failed, !ended, packet.sequence < SyncWire.maxPackets, packet.pcm.count == LanPacket.pcmBytes else { return false }
         if session == nil {
             session = packet.session
             origin = packet.origin
@@ -71,7 +72,7 @@ struct GroupPlayout {
     private mutating func settle(now: UInt64) {
         guard let id = session, !ready, !failed else { return }
         if sampleCount == 0 {
-            if attempts >= 12, let request = outstanding, now - UInt64(request.t1) >= 80_000_000 {
+            if attempts >= 12, outstanding.map({ now - UInt64($0.t1) >= 80_000_000 }) ?? true {
                 failed = true
                 clear()
             }
@@ -98,10 +99,12 @@ struct GroupPlayout {
     }
 
     mutating func poll(now: UInt64) -> ReceiverPlayoutBuffer.Block? {
+        guard !ended else { return nil }
         settle(now: now)
         guard let block = buffer.poll(nowNanos: now) else { return nil }
         if block.sequence >= Int64(SyncWire.maxPackets) {
             buffer.discardPending()
+            ended = true
             return nil
         }
         return block

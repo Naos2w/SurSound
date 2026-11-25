@@ -34,3 +34,6 @@ Sources:
 
 ## Discover receivers
 Android advertises a random-named `_sursound._udp` Bonjour service only while its receiver is listening. The LAN diagnostic and the app-audio sharing dialog offer a 15-second explicit browse; select an advertised private IPv4 address or enter it manually. Discovery does not authenticate the peer; retain a fresh matching 128-bit key. Test Android/iOS discovery, service loss, local permission and hotspot behavior on physical devices. Receiving from the iOS synthetic tone or legacy ReplayKit sender uses the same packet format, but neither reverse-direction device playback nor iOS capture is yet verified.
+
+## Shared-clock group pulse diagnostic
+With fresh shared test key and 1–4 comma-separated receiver IPv4 addresses, select **Send shared-clock group test (30 s)**. Start each receiver first with the sender's IP and same key. V2 uses authenticated clock replies and 240 ms sender presentation lead; it is synthetic pulses only. V1 app-audio capture sharing is unchanged. See [sync design and device acceptance](../docs/audio-synchronization.md).

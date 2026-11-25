@@ -11,6 +11,7 @@ internal class GroupPlayout(private val wire: SyncWire) {
     private var attempts = 0
     private var sampleCount = 0
     private var failed = false
+    private var ended = false
     private val estimator = ClockOffsetEstimator()
     private val pending = java.util.TreeMap<Int, ByteArray>()
     private val buffer = ReceiverPlayoutBuffer()
@@ -22,7 +23,7 @@ internal class GroupPlayout(private val wire: SyncWire) {
         private set
 
     fun offer(packet: SyncWire.Audio, now: Long): Boolean {
-        if (failed || packet.sequence !in 0 until SyncWire.MAX_PACKETS ||
+        if (failed || ended || packet.sequence !in 0 until SyncWire.MAX_PACKETS ||
             packet.pcm.size != LanPacketCodec.PCM_BYTES) return false
         if (session == null) {
             session = packet.session
@@ -67,7 +68,7 @@ internal class GroupPlayout(private val wire: SyncWire) {
     private fun settle(now: Long) {
         if (!started || ready || failed) return
         if (sampleCount == 0) {
-            if (attempts >= 12 && outstanding?.let { now - it.t1 >= 80_000_000L } == true) {
+            if (attempts >= 12 && (outstanding == null || outstanding?.let { now - it.t1 >= 80_000_000L } == true)) {
                 failed = true
                 clear()
             }
@@ -93,12 +94,14 @@ internal class GroupPlayout(private val wire: SyncWire) {
     }
 
     fun poll(now: Long): ReceiverPlayoutBuffer.Block? {
+        if (ended) return null
         settle(now)
         // No catch-up beyond the bounded 30-second source timeline.
         val block = buffer.poll(now) ?: return null
         if (block.sequence >= SyncWire.MAX_PACKETS) {
             block.pcm?.fill(0)
             buffer.discardPending()
+            ended = true
             return null
         }
         return block
