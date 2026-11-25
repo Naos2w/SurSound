@@ -23,6 +23,7 @@ class LanTestActivity : Activity() {
     private lateinit var key: EditText
     private lateinit var status: TextView
     private lateinit var send: Button
+    private lateinit var groupSend: Button
     private lateinit var receive: Button
     private lateinit var stop: Button
     private lateinit var generate: Button
@@ -61,10 +62,10 @@ class LanTestActivity : Activity() {
         })
         root.addView(TextView(this).apply {
             text = "Local addresses: " + localAddresses() +
-                "\nEnter the other device's private IPv4 address on each phone. Share a fresh pairing key privately. Start receiver first, then sender. Test stops when leaving this screen. The sender here emits only a test tone. The receiver also supports explicitly shared permitted app audio."
+                "\nEnter the other device's private IPv4 address on each phone. Share a fresh pairing key privately. Start receiver first, then sender. Test stops when leaving this screen. The sender here emits only a test tone. The receiver also supports explicitly shared permitted app audio. For a shared-clock pulse test, enter up to four comma-separated receiver IPs and use a fresh key shared only with the selected group."
         })
         peer = EditText(this).apply {
-            hint = "Other device IP (e.g. 192.168.1.20)"
+            hint = "Peer IPv4; group: up to 4 comma-separated IPs"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
             isSaveEnabled = false
@@ -80,6 +81,10 @@ class LanTestActivity : Activity() {
             setOnClickListener { key.setText(LanPacketCodec.generateKey()) }
         }
         send = Button(this).apply { text = "Send test tone (30 s)"; setOnClickListener { startTest(true) } }
+        groupSend = Button(this).apply {
+            text = "Send shared-clock group test (30 s)"
+            setOnClickListener { startTest(sender = true, group = true) }
+        }
         receive = Button(this).apply { text = "Listen (45 s)"; setOnClickListener { startTest(false) } }
         stop = Button(this).apply { text = "Stop test"; setOnClickListener { stopTest() } }
         status = TextView(this).apply { text = "Ready" }
@@ -100,7 +105,7 @@ class LanTestActivity : Activity() {
             text = "Find local receivers (15 s)"
             setOnClickListener { discovery.browse() }
         }
-        listOf(peer, key, generate, discover, discoveredPeers, receive, send, stop, status).forEach { root.addView(it) }
+        listOf(peer, key, generate, discover, discoveredPeers, receive, send, groupSend, stop, status).forEach { root.addView(it) }
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         updateButtons()
     }
@@ -118,15 +123,23 @@ class LanTestActivity : Activity() {
         super.onStop()
     }
 
-    private fun startTest(sender: Boolean) {
+    private fun startTest(sender: Boolean, group: Boolean = false) {
         if (session != null) return
         try {
-            val address = LanPacketCodec.localPeer(peer.text.toString())
+            val addresses = if (group) peer.text.toString().split(',').map { LanPacketCodec.localPeer(it) }
+                else listOf(LanPacketCodec.localPeer(peer.text.toString()))
+            require(addresses.size in 1..4 && addresses.distinct().size == addresses.size) {
+                "Enter one to four distinct private IPv4 addresses."
+            }
             val bytes = LanPacketCodec.parseKey(key.text.toString())
             try {
                 discovery.stopBrowsing()
                 receiving = !sender
-                session = if (sender) LanTestSession.sender(address, bytes) else LanTestSession.receiver(address, bytes)
+                session = when {
+                    group -> LanTestSession.groupSender(addresses, bytes)
+                    sender -> LanTestSession.sender(addresses.single(), bytes)
+                    else -> LanTestSession.receiver(addresses.single(), bytes)
+                }
             } finally { bytes.fill(0) }
             key.text.clear()
             status.text = "Starting"
@@ -153,6 +166,7 @@ class LanTestActivity : Activity() {
         generate.isEnabled = ready
         discover.isEnabled = ready
         send.isEnabled = ready
+        groupSend.isEnabled = ready
         receive.isEnabled = ready
         stop.isEnabled = !ready
     }
