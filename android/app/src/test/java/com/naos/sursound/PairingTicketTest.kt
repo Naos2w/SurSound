@@ -20,6 +20,13 @@ class PairingTicketTest {
         assertNull(PairingTicket.parse(offer(end = now + 601), now))
     }
 
+    @Test fun liveTicketIsExplicitlySeparateFromDiagnosticMode() {
+        val live = requireNotNull(PairingTicket.parse(offer().replace("|v1|", "|live|"), now))
+        assertTrue(live.live)
+        assertFalse(requireNotNull(PairingTicket.parse(offer(), now)).live)
+        assertNull(PairingTicket.parse(offer().replace("|v1|", "|LIVE|"), now))
+    }
+
     @Test fun rejectsUnsafeAndMalformedTickets() {
         for (value in listOf(offer(ip = "8.8.8.8"), offer(ip = "127.0.0.1"),
             offer(ip = "192.168.001.20"), offer(secret = "123456"), offer(secret = "g".repeat(32)),

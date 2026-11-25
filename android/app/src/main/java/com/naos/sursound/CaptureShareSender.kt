@@ -37,7 +37,7 @@ internal class PcmPacketizer(private val emit: (ByteArray) -> Unit) {
 /** Explicit, bounded consent-driven sharing; v1 single peer or v2 group. */
 internal class CaptureShareSender(
     peers: List<InetAddress>, key: ByteArray, private val group: Boolean
-) : AutoCloseable {
+) : CaptureSender {
     private val targets = peers.toList().also {
         require(it.size in 1..4 && it.distinct().size == it.size && (group || it.size == 1))
     }
@@ -49,7 +49,7 @@ internal class CaptureShareSender(
     private val droppedCount = AtomicLong()
     private val discardedQueuedCount = AtomicLong()
     @Volatile private var socket: DatagramSocket? = null
-    @Volatile var failure: String? = null
+    @Volatile override var failure: String? = null
         private set
 
     val sent: Long get() = sentCount.get()
@@ -149,7 +149,7 @@ internal class CaptureShareSender(
         }
     }
 
-    @Synchronized fun offer(samples: ShortArray, count: Int) {
+    @Synchronized override fun offer(samples: ShortArray, count: Int) {
         if (running.get()) packetizer.offer(samples, count)
     }
 
@@ -162,7 +162,7 @@ internal class CaptureShareSender(
     }
 
     /** Wait only briefly after socket closure; never block capture teardown indefinitely. */
-    fun awaitStopped(timeoutMillis: Long = 250) {
+    override fun awaitStopped(timeoutMillis: Long) {
         require(timeoutMillis in 1..500)
         try {
             worker.join(timeoutMillis)
@@ -171,7 +171,7 @@ internal class CaptureShareSender(
         }
     }
 
-    fun stats(): CaptureState.ShareStats = CaptureState.ShareStats(
+    override fun stats(): CaptureState.ShareStats = CaptureState.ShareStats(
         group, targets.size, sentCount.get(), droppedCount.get(), discardedQueuedCount.get(), !worker.isAlive
     )
 

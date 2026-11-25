@@ -31,7 +31,7 @@ class CaptureService : Service() {
     private lateinit var thread: HandlerThread
     private lateinit var worker: Handler
     private var session: Session? = null
-    private data class ShareTarget(val peers: List<InetAddress>, val key: ByteArray, val group: Boolean)
+    private data class ShareTarget(val peers: List<InetAddress>, val key: ByteArray, val group: Boolean, val live: Boolean)
 
     override fun onCreate() {
         super.onCreate()
@@ -50,9 +50,11 @@ class CaptureService : Service() {
         val suppliedKey = intent?.getByteArrayExtra(EXTRA_SHARE_KEY)
         val suppliedPeer = intent?.getStringExtra(EXTRA_SHARE_PEER)
         val suppliedGroup = intent?.getBooleanExtra(EXTRA_SHARE_GROUP, false) ?: false
+        val suppliedLive = intent?.getBooleanExtra(EXTRA_SHARE_LIVE, false) ?: false
         intent?.removeExtra(EXTRA_SHARE_KEY)
         intent?.removeExtra(EXTRA_SHARE_PEER)
         intent?.removeExtra(EXTRA_SHARE_GROUP)
+        intent?.removeExtra(EXTRA_SHARE_LIVE)
         if (session != null) {
             suppliedKey?.fill(0)
             return START_NOT_STICKY
@@ -67,11 +69,12 @@ class CaptureService : Service() {
 
         val owner = CaptureState.begin()
         try {
-            val target = if (suppliedKey != null || suppliedPeer != null || suppliedGroup) {
+            val target = if (suppliedKey != null || suppliedPeer != null || suppliedGroup || suppliedLive) {
                 require(suppliedKey != null && suppliedKey.size == 16 && suppliedPeer != null)
-                ShareTarget(capturePeers(suppliedPeer, suppliedGroup), suppliedKey, suppliedGroup)
+                require(!(suppliedGroup && suppliedLive))
+                ShareTarget(capturePeers(suppliedPeer, suppliedGroup), suppliedKey, suppliedGroup, suppliedLive)
             } else null
-            val notice = notification(target != null)
+            val notice = notification(target != null, target?.live == true)
             if (target != null) {
                 val manager = requireNotNull(getSystemService(NotificationManager::class.java))
                 check(manager.areNotificationsEnabled() &&
@@ -108,7 +111,7 @@ class CaptureService : Service() {
         if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         else intent.getParcelableExtra(EXTRA_RESULT_DATA)
 
-    private fun notification(sharing: Boolean): Notification {
+    private fun notification(sharing: Boolean, live: Boolean): Notification {
         requireNotNull(getSystemService(NotificationManager::class.java)).createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW)
         )
@@ -119,7 +122,11 @@ class CaptureService : Service() {
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(getString(if (sharing) R.string.share_notification_title else R.string.notification_title))
-            .setContentText(getString(if (sharing) R.string.share_notification_text else R.string.notification_text))
+            .setContentText(getString(when {
+                live -> R.string.share_live_notification
+                sharing -> R.string.share_notification_text
+                else -> R.string.notification_text
+            }))
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_delete, getString(R.string.stop_capture), stop).build())
@@ -128,10 +135,12 @@ class CaptureService : Service() {
 
     /** All projection/record operations and callbacks run on the same worker looper. */
     private inner class Session(private val owner: Long, private val target: ShareTarget?) {
-        private var sender: CaptureShareSender? = null
+        private var sender: CaptureSender? = null
+        private var shareDeadline = Long.MAX_VALUE
+        private var lastNoticeCheck = 0L
         private var retainedShare: CaptureState.ShareStats? = null
         private val shareTimeout = Runnable {
-            finish("30-second LAN sharing limit reached.")
+            finish(if (target?.live == true) "60-minute live test limit reached." else "30-second LAN sharing limit reached.")
             main.post { stopSelf() }
         }
         private var projection: MediaProjection? = null
@@ -152,6 +161,20 @@ class CaptureService : Service() {
             override fun run() {
                 if (finished) return
                 try {
+                    val elapsed = SystemClock.elapsedRealtime()
+                    if (target?.live == true && elapsed - lastNoticeCheck >= 1000) {
+                        lastNoticeCheck = elapsed
+                        val manager = requireNotNull(getSystemService(NotificationManager::class.java))
+                        if (!manager.areNotificationsEnabled() ||
+                            manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) {
+                            fail("Sharing notification disabled. Live sharing stopped.")
+                            return
+                        }
+                    }
+                    if (elapsed >= shareDeadline) {
+                        shareTimeout.run()
+                        return
+                    }
                     sender?.failure?.let { fail(it); return }
                     val input = record ?: error("AudioRecord unavailable")
                     val count = input.read(pcm, 0, pcm.size, AudioRecord.READ_NON_BLOCKING)
@@ -213,10 +236,19 @@ class CaptureService : Service() {
                 input.startRecording()
                 check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Recording not started" }
                 if (target != null) {
-                    sender = CaptureShareSender(target.peers, target.key, target.group)
-                    worker.postDelayed(shareTimeout, 30_000L)
+                    sender = if (target.live) {
+                        val peer = target.peers.single()
+                        LiveCaptureSender(peer, target.key, LiveNetwork.select(this@CaptureService, peer))
+                    } else CaptureShareSender(target.peers, target.key, target.group)
+                    val limit = if (target.live) LIVE_LIMIT_MS else 30_000L
+                    shareDeadline = SystemClock.elapsedRealtime() + limit
+                    worker.postDelayed(shareTimeout, limit)
                 }
-                publish(CaptureState.Phase.CAPTURING, if (sender != null) "LAN sharing active (30-second limit)" else "Waiting for permitted playback samples")
+                publish(CaptureState.Phase.CAPTURING, when {
+                    target?.live == true -> "Live sharing authorized — waiting for receiver"
+                    sender != null -> "LAN sharing active (30-second limit)"
+                    else -> "Waiting for permitted playback samples"
+                })
                 worker.post(readNext)
             } catch (e: RuntimeException) {
                 fail("Capture setup failed: " + e.javaClass.simpleName + ": " + (e.message ?: ""))
@@ -278,6 +310,8 @@ class CaptureService : Service() {
         const val EXTRA_SHARE_PEER = "share_peer"
         const val EXTRA_SHARE_KEY = "share_key"
         const val EXTRA_SHARE_GROUP = "share_group"
+        const val EXTRA_SHARE_LIVE = "share_live"
+        private const val LIVE_LIMIT_MS = 60 * 60 * 1000L
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val SAMPLE_RATE = 48_000

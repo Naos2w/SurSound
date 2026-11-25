@@ -28,5 +28,8 @@
     <string name="pair_clear">Clear QR pairing</string>
     <string name="pair_scan_failed">Unable to open QR scanner. Use manual pairing instead.</string>
     <string name="pair_invalid">Invalid, expired or unsupported receiver QR. Start a new receiver or pair manually.</string>
-    <string name="pair_expired">QR pairing expired or is not valid for this mode. Scan a fresh v1 receiver QR.</string>
+    <string name="pair_expired">QR pairing expired or is not valid for this mode. Scan a fresh QR for the selected mode.</string>
+    <string name="share_live">Live audio share (Windows)</string>
+    <string name="share_live_warning">Start the Windows receiver in live mode. Share permitted app audio with one explicitly selected receiver on this Wi-Fi. Stop at any time from the app or visible notification. The test ends after 60 minutes, consent revocation, a network change, or sustained receiver loss. Short interruptions pause transmission and discard queued audio before authenticated recovery.</string>
+    <string name="share_live_notification">Live encrypted sharing. Stop at any time. Maximum test duration 60 minutes.</string>
 </resources>

@@ -10,7 +10,10 @@ internal object CaptureState {
         val sent: Long,
         val dropped: Long,
         val discardedQueued: Long,
-        val senderFinished: Boolean
+        val senderFinished: Boolean,
+        val live: Boolean = false,
+        val connection: String? = null,
+        val recoveries: Int = 0
     )
 
     data class Snapshot(
