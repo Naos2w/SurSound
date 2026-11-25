@@ -87,9 +87,78 @@ internal class LanTestSession private constructor() {
         }
     }
 
+    /** One ephemeral UDP endpoint serves all explicitly selected receivers. */
+    private fun sendGroup(peers: List<InetAddress>, key: ByteArray) {
+        require(peers.size in 1..4 && peers.distinct().size == peers.size)
+        val wire = SyncWire(key)
+        val session = SyncWire.newNonce()
+        attach(DatagramSocket()).use { udp ->
+            udp.soTimeout = 2
+            val pcm = ByteBuffer.allocate(LanPacketCodec.PCM_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+            val input = ByteArray(SyncWire.CLOCK_BYTES + 1)
+            val datagram = DatagramPacket(input, input.size)
+            val lastReply = HashMap<InetAddress, Long>()
+            val start = System.nanoTime()
+            val origin = start + SyncWire.LEAD_NANOS
+            var lastSequence = -1
+            var sent = 0L
+            var dropped = 0L
+            var probes = 0L
+            while (!stopped.get()) {
+                val now = System.nanoTime()
+                val slot = (now - start) / ReceiverPlayoutBuffer.FRAME_NANOS
+                if (slot >= SyncWire.MAX_PACKETS) break
+                if (slot > lastSequence) {
+                    dropped += (slot - lastSequence - 1) * peers.size
+                    val sequence = slot.toInt()
+                    lastSequence = sequence
+                    pcm.clear()
+                    // A brief pulse each second makes physical timing comparison easier.
+                    repeat(LanPacketCodec.FRAMES) { index ->
+                        val frame = sequence.toLong() * LanPacketCodec.FRAMES + index
+                        val amplitude = if (frame % LanPacketCodec.SAMPLE_RATE < 2400) 2400 else 0
+                        val sample = (sin(2.0 * PI * 440.0 * frame / LanPacketCodec.SAMPLE_RATE) * amplitude).toInt().toShort()
+                        pcm.putShort(sample).putShort(sample)
+                    }
+                    val data = wire.sealAudio(session, sequence, origin, pcm.array())
+                    for (peer in peers) {
+                        if (stopped.get()) break
+                        try {
+                            udp.send(DatagramPacket(data, data.size, peer, PORT))
+                            sent++
+                        } catch (e: java.io.IOException) {
+                            if (stopped.get()) break
+                            dropped++
+                        }
+                    }
+                    status = Status("Group test: ${peers.size} receivers • clock replies: $probes", sent, dropped)
+                }
+                // The receive socket is the same endpoint from which the audio originated.
+                datagram.length = input.size
+                try {
+                    udp.receive(datagram)
+                    val t2 = System.nanoTime()
+                    if (stopped.get() || datagram.address !in peers) continue
+                    val request = wire.openClock(input.copyOf(datagram.length)) ?: continue
+                    if (request.kind != SyncWire.REQUEST || request.session != session) continue
+                    if (lastReply[datagram.address]?.let { t2 - it < 10_000_000L } == true) continue
+                    lastReply[datagram.address] = t2
+                    val reply = wire.sealClock(request.copy(kind = SyncWire.REPLY, t2 = t2, t3 = System.nanoTime()))
+                    udp.send(DatagramPacket(reply, reply.size, datagram.address, datagram.port))
+                    probes++
+                } catch (_: SocketTimeoutException) {
+                    // Continue the monotonic send timeline.
+                }
+            }
+            pcm.array().fill(0)
+        }
+    }
+
     private fun receive(peer: InetAddress, key: ByteArray) {
         val decoder = LanPacketCodec.Decoder(key)
         val playout = ReceiverPlayoutBuffer()
+        val wire = SyncWire(key)
+        val group = GroupPlayout(wire)
         attach(DatagramSocket(PORT)).use { udp ->
             udp.soTimeout = 100
             val min = AudioTrack.getMinBufferSize(LanPacketCodec.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO,
@@ -106,38 +175,69 @@ internal class LanTestSession private constructor() {
             try {
                 check(track.state == AudioTrack.STATE_INITIALIZED)
                 track.setVolume(0.25f)
-                val storage = ByteArray(LanPacketCodec.PACKET_BYTES + 1)
+                val storage = ByteArray(SyncWire.AUDIO_BYTES + 1)
                 val datagram = DatagramPacket(storage, storage.size)
                 val start = System.nanoTime()
                 var count = 0L
                 var rejected = 0L
                 var outputDrops = 0L
                 var playing = false
+                var selectedPort: Int? = null
                 val silence = ByteArray(LanPacketCodec.PCM_BYTES)
                 status = Status("Listening for authenticated audio packets")
                 while (!stopped.get() && System.nanoTime() - start < 45_000_000_000L) {
                     // Once anchored, poll on timeout too so a lost datagram cannot stall audio.
-                    udp.soTimeout = if (playout.started) 2 else 100
+                    udp.soTimeout = if (playout.started || group.started) 2 else 100
                     datagram.length = storage.size
                     var changed = false
                     try {
                         udp.receive(datagram)
                         if (stopped.get()) break
-                        val packet = if (datagram.address == peer) decoder.decode(storage.copyOf(datagram.length)) else null
-                        if (packet == null) {
+                        val now = System.nanoTime()
+                        if (datagram.address != peer || selectedPort?.let { it != datagram.port } == true) {
                             rejected++
-                        } else if (playout.offer(packet.session, packet.sequence, packet.pcm, System.nanoTime())) {
-                            count++
                         } else {
-                            packet.pcm.fill(0)
-                            rejected++
+                            val bytes = storage.copyOf(datagram.length)
+                            when {
+                                !playout.started && bytes.size == SyncWire.AUDIO_BYTES -> {
+                                    val packet = wire.openAudio(bytes)
+                                    if (packet != null && group.offer(packet, now)) {
+                                        selectedPort = datagram.port
+                                        count++
+                                    } else {
+                                        packet?.pcm?.fill(0)
+                                        rejected++
+                                    }
+                                }
+                                group.started && bytes.size == SyncWire.CLOCK_BYTES -> {
+                                    val reply = wire.openClock(bytes)
+                                    if (reply == null || !group.acceptReply(reply, now)) rejected++
+                                }
+                                !group.started && bytes.size == LanPacketCodec.PACKET_BYTES -> {
+                                    val packet = decoder.decode(bytes)
+                                    if (packet != null && playout.offer(packet.session, packet.sequence, packet.pcm, now)) {
+                                        selectedPort = datagram.port
+                                        count++
+                                    } else {
+                                        packet?.pcm?.fill(0)
+                                        rejected++
+                                    }
+                                }
+                                else -> rejected++
+                            }
                         }
                         changed = true
                     } catch (_: SocketTimeoutException) {
                         // The local monotonic playout clock still advances.
                     }
                     if (stopped.get()) break
-                    val block = playout.poll(System.nanoTime())
+                    val now = System.nanoTime()
+                    if (group.started) {
+                        val probe = group.nextProbe(now)
+                        val port = selectedPort
+                        if (probe != null && port != null) udp.send(DatagramPacket(probe, probe.size, peer, port))
+                    }
+                    val block = if (group.started) group.poll(now) else playout.poll(now)
                     if (block != null) {
                         if (!playing) {
                             track.play()
@@ -154,14 +254,21 @@ internal class LanTestSession private constructor() {
                         changed = true
                     }
                     if (changed) {
-                        val message = if (playing) "Playing buffered authenticated LAN audio"
+                        val rtt = group.roundTripNanos?.let { "%.1f ms RTT".format(it / 1_000_000.0) }
+                        val message = if (group.started) {
+                            if (playing) "Playing shared-clock test (${rtt ?: "clock unavailable"})"
+                            else if (group.ready) "Listening — shared clock ready (${rtt ?: "RTT unavailable"})"
+                            else "Listening — waiting for authenticated clock"
+                        } else if (playing) "Playing buffered authenticated LAN audio"
                             else if (playout.started) "Listening — buffering authenticated audio"
                             else "Listening for authenticated audio packets"
-                        status = Status(message, count, rejected + outputDrops + playout.missing + playout.schedulerSkipped)
+                        status = Status(message, count, rejected + outputDrops + playout.missing +
+                            playout.schedulerSkipped + group.missing + group.schedulerSkipped)
                     }
                 }
             } finally {
                 playout.discardPending()
+                group.clear()
                 runCatching {
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
                     track.flush()
@@ -175,6 +282,9 @@ internal class LanTestSession private constructor() {
         const val PORT = 39771
         fun sender(peer: InetAddress, key: ByteArray): LanTestSession = LanTestSession().apply {
             launch("SurSoundLanSender", key.copyOf()) { send(peer, it) }
+        }
+        fun groupSender(peers: List<InetAddress>, key: ByteArray): LanTestSession = LanTestSession().apply {
+            launch("SurSoundGroupTone", key.copyOf()) { sendGroup(peers.toList(), it) }
         }
         fun receiver(peer: InetAddress, key: ByteArray): LanTestSession = LanTestSession().apply {
             launch("SurSoundLanReceiver", key.copyOf()) { receive(peer, it) }

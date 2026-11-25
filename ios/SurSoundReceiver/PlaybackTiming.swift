@@ -74,13 +74,13 @@ struct ReceiverPlayoutBuffer {
     }
 
     @discardableResult
-    mutating func offer(sessionId: UInt64, sequence: UInt32, pcm: Data, nowNanos: UInt64) -> Bool {
+    mutating func offer(sessionId: UInt64, sequence: UInt32, pcm: Data, nowNanos: UInt64, firstDeadlineNanos: UInt64? = nil) -> Bool {
         guard sequence < UInt32(Int32.max), pcm.count == LanPacket.pcmBytes else { return false }
         let index = Int64(sequence)
         if session == nil {
             session = sessionId
             expected = index
-            deadline = nowNanos + initialDelayNanos
+            deadline = firstDeadlineNanos ?? (nowNanos + initialDelayNanos)
         }
         guard session == sessionId, index >= expected, index - expected < windowPackets,
               pending[index] == nil else { return false }

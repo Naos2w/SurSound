@@ -24,7 +24,7 @@ struct ReceiverView: View {
         NavigationStack {
             Form {
                 Section("Local peer") {
-                    TextField("Other device private IPv4 address", text: $peer)
+                    TextField("Peer IPv4 (group: comma-separated IPs)", text: $peer)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.numbersAndPunctuation)
@@ -71,6 +71,14 @@ struct ReceiverView: View {
                         key = ""
                     }
                     .disabled(receiver.active || tone.active || prepared)
+                    Button("Send shared-clock group test (30 seconds)") {
+                        discovery.stop()
+                        tone.startGroup(peer: peer, secret: key)
+                        key = ""
+                    }
+                    .disabled(receiver.active || tone.active || prepared)
+                    Text("Group test: enter one to four distinct receiver IPs separated by commas, and use one fresh key shared privately with those receivers. This sends synthetic pulses, not app audio.")
+                        .font(.footnote)
                     Button("Stop tone", role: .destructive) { tone.stop() }
                         .disabled(!tone.active)
                     Text(tone.status)

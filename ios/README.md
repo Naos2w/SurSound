@@ -35,3 +35,6 @@ References:
 Remaining: real-device broadcast/discovery/duplex-direction tests, production pairing, authenticated clock synchronization, adaptive drift/buffer correction and host output compensation.
 
 The receiver uses a bounded 40 ms initial local playout buffer with reordering, silence for missing blocks and skipped overdue scheduler slots. This is not yet shared-clock synchronization or a measured acoustic delay. See [synchronization staging](../docs/audio-synchronization.md).
+
+## Shared-clock group pulse diagnostic
+Use the explicit group test with 1–4 receiver IPs and one fresh shared test key. V2 receivers wait for authenticated clock samples; all use the same sender presentation timeline. Group synthetic tone only; actual app audio stays on v1. See [protocol and acceptance](../docs/audio-synchronization.md).
