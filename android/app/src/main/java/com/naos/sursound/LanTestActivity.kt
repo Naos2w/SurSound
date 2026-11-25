@@ -78,7 +78,7 @@ class LanTestActivity : Activity() {
         }
         key = EditText(this).apply {
             hint = "32-character pairing key"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
             isSaveEnabled = false
         }
@@ -165,6 +165,7 @@ class LanTestActivity : Activity() {
             discovery.stopBrowsing()
             scannedTicket = ticket
             peer.setText(ticket.peer)
+            key.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             key.setText(ticket.keyHex)
             status.setText(R.string.pair_tone_review)
         }
@@ -223,6 +224,10 @@ class LanTestActivity : Activity() {
     private fun updateButtons() {
         val ready = session == null
         val manual = ready && scannedTicket == null
+        // Manual Generate must remain readable so owners can share the key privately.
+        val keyInputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            (if (scannedTicket != null) InputType.TYPE_TEXT_VARIATION_PASSWORD else 0)
+        if (key.inputType != keyInputType) key.inputType = keyInputType
         peer.isEnabled = manual
         key.isEnabled = manual
         generate.isEnabled = manual
