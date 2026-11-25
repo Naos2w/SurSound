@@ -1,47 +1,28 @@
-# SurSound — single task list
+# SurSound — task tracking index
 
-## Foundation
-- [x] Product name and selected logo direction confirmed.
-- [x] General-purpose audio product direction confirmed.
-- [x] Finish repository bootstrap; verify main/develop, CI and active remote branch protection.
-- [ ] Preserve selected logo as project asset from approved reference (no redesign).
+GitHub Issues and their native sub-issues are the single source of truth. Do not maintain a second checklist here. The pre-migration task history is preserved in Git (develop commit `9d1dabc`).
 
-## Phase 0: technical feasibility
-- [ ] Inspect Android SDK/JDK/Gradle toolchain and physical test device.
-- [ ] Android permitted audio capture: consent, PCM frames, lifecycle, denied-source handling.
-  - [x] Implement Kotlin diagnostic app, permission/consent flow, mediaProjection foreground service, PCM meter, stop/revoke/error handling, and meter/state unit tests.
-  - [x] Pass Android build, lint and unit tests; APK uploaded for capture-only commit ae47c29 (CI 45406889480).
-  - [ ] Verify actual capture on a physical Android device and source app matrix.
-- [ ] iOS permitted audio capture: verify SDK/API availability, consent and source limits; establish macOS build/signing.
-  - [x] Implement legacy ReplayKit broadcast upload extension, system picker, .audioApp-only PCM conversion and bounded encrypted LAN sender; add expiry/format tests.
-  - [ ] Verify current CI including embedded broadcast extension, physical signing/App Group and iOS source compatibility.
-  - [ ] Migrate iOS 27+ capture to ScreenCaptureKit with the supported SDK/system picker; legacy ReplayKit APIs are deprecated.
-- [ ] Local Wi-Fi transport with a test signal and authenticated pairing design.
-  - [x] Implement Android synthetic tone sender, authenticated UDP packet codec, manual fresh-key pairing, receiver AudioTrack output and JVM codec/UDP loopback tests.
-  - [x] Verify Android test-tone build, lint, unit tests and APK in CI (3ee64de; run 45407714646).
-  - [x] Implement explicit consent-based capture-to-LAN sender, bounded PCM packetizer/queue, notification stop and 30-second timeout.
-  - [ ] Verify current sharing implementation and real-device stop/revocation behavior.
-  - [ ] Verify audible sender/receiver playback and wrong-key rejection on two physical devices over Wi-Fi and hotspot.
-- [ ] Android/iOS receiver playback and bidirectional physical-device tests.
-  - [x] Implement native iOS foreground UDP/AES-GCM receiver and AVAudioEngine playback; add shared wire-format vector and simulator CI.
-  - [x] Verify previous Android/iOS CI (0a8c921; run 45440251440).
-  - [x] Add reverse-direction iOS synthetic tone sender and opt-in Bonjour/NSD receiver discovery with manual key verification.
-  - [ ] Verify latest Android/iOS CI and physical iPhone-to-Android/Android-to-iPhone playback, discovery and wrong-key rejection.
-- [ ] Measure end-to-end latency and receiver-to-receiver acoustic offset; target <=5 ms.
-- [ ] Test host playback synchronization or document receiver-only fallback.
-- [ ] Left/right channel assignment.
-- [ ] Test source compatibility (Spotify, YouTube, Apple Music, etc.) without bypassing content restrictions.
-- [ ] Background/lock screen, hotspot, discovery, reconnect, privacy and feedback prevention.
-- [ ] Record results and go/no-go for UI/MVP.
+- [All issues](https://github.com/Naos2w/SurSound/issues)
+- [Parent features](https://github.com/Naos2w/SurSound/issues?q=is%3Aissue+label%3Atype%3Afeature)
+- [Open acceptance tasks](https://github.com/Naos2w/SurSound/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Atask)
+- [Milestones](https://github.com/Naos2w/SurSound/milestones)
+- [GitHub Projects board setup (#6)](https://github.com/Naos2w/SurSound/issues/6) — pending Projects authorization.
 
-## Later
-- [ ] Approve UI preview and implement cross-platform application.
-- [ ] Party/stereo/surround, calibration, release tests and store preparation.
+## Feature index
 
-## Evidence
-- Bootstrap commit 08d2894; CI run 45389017929 passed; active rulesets 27984200, 27984202 and 27984206 confirmed on GitHub.
-- MSI preflight: ANDROID_HOME=D:\\Android\\Sdk, Java and Gradle not on PATH. Local toolchain/device validation incomplete; CI provisions JDK 17/Gradle 8.9/SDK 35.
-- Capture-only CI run 45406889480 for ae47c29: bootstrap, Android SDK setup, unit tests, lint, assembly and APK upload passed. PR #1 remains open; physical capture is not verified.
-- Added LAN test-tone code and tests on the same pending Phase 0 feature branch to avoid duplicating the unmerged Android baseline. Test-tone CI 45407714646 passed for 3ee64de; device validation pending.
-- Android capture-to-LAN + iOS receiver commit 0a8c921: bootstrap, Android build/lint/test and iOS simulator build/test passed (CI 45440251440). Real devices remain unverified.
-- Added iOS tone sender, legacy broadcast extension, and opt-in mDNS receiver advertisement/browse on both platforms. Updated CI and physical acceptance pending; signing/App Group, iOS 27+ migration, timing and production pairing not verified.
+| Feature | Issue | Milestone |
+|---|---|---|
+| Repository foundation, branding and governance | [#2](https://github.com/Naos2w/SurSound/issues/2) | v0.1.0 |
+| Android permitted capture | [#7](https://github.com/Naos2w/SurSound/issues/7) | v0.1.0 |
+| iOS permitted capture and API migration | [#12](https://github.com/Naos2w/SurSound/issues/12) | v0.1.0 |
+| Authenticated local transport | [#17](https://github.com/Naos2w/SurSound/issues/17) | v0.2.0 |
+| Bidirectional playback and discovery | [#23](https://github.com/Naos2w/SurSound/issues/23) | v0.3.0 |
+| Source compatibility and lifecycle | [#41](https://github.com/Naos2w/SurSound/issues/41) | v0.3.0 |
+| Timing and synchronization | [#29](https://github.com/Naos2w/SurSound/issues/29) | v0.4.0 |
+| Stereo and channel assignment | [#33](https://github.com/Naos2w/SurSound/issues/33) | v0.5.0 |
+| Party and surround modes | [#36](https://github.com/Naos2w/SurSound/issues/36) | v0.6.0 |
+| Audio field calibration | [#39](https://github.com/Naos2w/SurSound/issues/39) | v0.7.0 |
+| MVP, UI and beta | [#45](https://github.com/Naos2w/SurSound/issues/45) | v0.9.0 |
+| Store and final release | [#49](https://github.com/Naos2w/SurSound/issues/49) | v1.0.0 |
+
+Follow [the issue-driven Git workflow](../docs/git-workflow.md). Completion is determined by actual sub-issue acceptance, not merely by a merged PR or green CI.
