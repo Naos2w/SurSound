@@ -7,6 +7,7 @@
 - Do not bypass protections, fake approvals/checks, merge or release without applicable authorization.
 - Use the simplest implementation and run relevant tests/builds. One developer by default; no compulsory extra agent reviews.
 - Respect Android/iOS user consent, source capture policies, DRM and recording indicators; do not circumvent restrictions.
+- Keep test packages versioned according to docs/git-workflow.md; use the actual embedded build version, not only a PR number. Transfer Android APKs to the authorized test phone's Download folder over ADB and verify SHA-256; installation is manual by the device owner. Do not invoke adb install, uninstall or bypass installation restrictions on that phone.
 - Verify hardware-dependent claims with actual devices. Distinguish build results, network tests and acoustic synchronization measurements.
 - Keep secrets and signing credentials out of Git. Do not publish captured audio or personal data.
 - For new UI design directions obtain approval of a preview before implementation.
