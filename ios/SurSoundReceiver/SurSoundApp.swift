@@ -83,6 +83,12 @@ struct ReceiverView: View {
                         .disabled(!tone.active)
                     Text(tone.status)
                 }
+                #if DEVICE_TEST
+                Section("Free-signing device test") {
+                    Text("Receive permitted audio from an Android sender, or send synthetic test tones to one or more receivers. This target has no broadcast extension or App Group entitlement and does not capture audio from other iOS apps.")
+                        .font(.footnote)
+                }
+                #else
                 Section("Share permitted app audio (legacy ReplayKit)") {
                     Text("Grant Local Network access using Find local receivers first. Prepare a fresh pairing, then tap the system broadcast control and confirm Start Broadcast. Only permitted app audio is transmitted; microphone and screen frames are discarded. Use the system recording indicator to stop. The PoC stops after 30 seconds.")
                         .font(.footnote)
@@ -98,10 +104,15 @@ struct ReceiverView: View {
                     }
                     Text(preparationMessage).font(.footnote)
                 }
+                #endif
             }
             .navigationTitle("SurSound PoC")
         }
-        .onAppear { BroadcastRequest.cancel() }
+        .onAppear {
+            #if !DEVICE_TEST
+            BroadcastRequest.cancel()
+            #endif
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .background {
                 receiver.stop("Stopped on backgrounding.")
@@ -115,11 +126,14 @@ struct ReceiverView: View {
             receiver.stop()
             tone.stop()
             discovery.stop()
+            #if !DEVICE_TEST
             cancelPreparation()
+            #endif
             key = ""
         }
     }
 
+    #if !DEVICE_TEST
     private func prepare(group: Bool = false) {
         discovery.stop()
         do {
@@ -146,4 +160,5 @@ struct ReceiverView: View {
         prepared = false
         preparationMessage = "No pending pairing. Stop an active broadcast from the system recording indicator."
     }
+    #endif
 }

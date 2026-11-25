@@ -47,14 +47,29 @@ jobs:
         with:
           cmdline-tools-version: '12266719'
           packages: 'platform-tools platforms;android-35 build-tools;34.0.0'
+      - name: Derive test build version
+        run: python3 .github/scripts/build-version.py
       - name: Test, lint and build Android PoC
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Verify and name versioned Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          badging="$("$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$apk")"
+          [[ "$badging" == *"versionCode='$SURSOUND_BUILD_CODE'"* ]]
+          [[ "$badging" == *"versionName='$SURSOUND_BUILD_NAME'"* ]]
+          mkdir -p android/app/build/device-artifacts
+          cp "$apk" "android/app/build/device-artifacts/SurSound-v$SURSOUND_BUILD_NAME.apk"
+          cp "$RUNNER_TEMP/BUILD-INFO.json" android/app/build/device-artifacts/
+          cd android/app/build/device-artifacts
+          sha256sum "SurSound-v$SURSOUND_BUILD_NAME.apk" > SHA256SUMS.txt
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: sursound-android-capture-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/device-artifacts/
           if-no-files-found: error
       - name: Upload test and lint reports
         if: always()
@@ -75,6 +90,8 @@ jobs:
         working-directory: ios
     steps:
       - uses: actions/checkout@v4
+      - name: Derive test build version
+        run: python3 ../.github/scripts/build-version.py
       - name: Generate native iOS project
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
@@ -84,7 +101,37 @@ jobs:
         run: |
           set -euo pipefail
           device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
-          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundReceiver -configuration Debug -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO -resultBundlePath TestResults.xcresult test
+          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundReceiver -configuration Debug -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$SURSOUND_BASE_VERSION" CURRENT_PROJECT_VERSION="$SURSOUND_IOS_BUILD" -resultBundlePath TestResults.xcresult test
+      - name: Build unsigned arm64 iOS device test IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SurSoundReceiver.xcodeproj -scheme SurSoundDeviceTest -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/sursound-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$SURSOUND_BASE_VERSION" CURRENT_PROJECT_VERSION="$SURSOUND_IOS_BUILD" build
+          app="$RUNNER_TEMP/sursound-device/Build/Products/Release-iphoneos/SurSoundDeviceTest.app"
+          test -d "$app"
+          test -f "$app/SurSoundDeviceTest"
+          test ! -e "$app/embedded.mobileprovision"
+          test -z "$(find "$app" -name '*.appex' -print)"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.naos.sursound.devicetest
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = "$SURSOUND_BASE_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = "$SURSOUND_IOS_BUILD"
+          /usr/bin/lipo "$app/SurSoundDeviceTest" -verify_arch arm64
+          mkdir -p "$RUNNER_TEMP/sursound-ipa/Payload"
+          ditto "$app" "$RUNNER_TEMP/sursound-ipa/Payload/SurSoundDeviceTest.app"
+          mkdir -p "$GITHUB_WORKSPACE/ios/device-artifacts"
+          ipa="SurSound-v$SURSOUND_BUILD_NAME-device-test-unsigned.ipa"
+          ditto -c -k --keepParent "$RUNNER_TEMP/sursound-ipa/Payload" "$GITHUB_WORKSPACE/ios/device-artifacts/$ipa"
+          cp "$RUNNER_TEMP/BUILD-INFO.json" "$GITHUB_WORKSPACE/ios/device-artifacts/"
+          cd "$GITHUB_WORKSPACE/ios/device-artifacts"
+          shasum -a 256 "$ipa" > SHA256SUMS.txt
+          unzip -t "$ipa"
+      - name: Upload unsigned device test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sursound-ios-device-test-unsigned
+          path: ios/device-artifacts/
+          if-no-files-found: error
       - name: Upload iOS test result
         if: always()
         uses: actions/upload-artifact@v4
