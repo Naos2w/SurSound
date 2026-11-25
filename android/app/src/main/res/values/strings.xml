@@ -21,4 +21,12 @@
     <string name="share_group_capture">Share permitted app audio to group (30 s)</string>
     <string name="share_group_peers">1–4 receiver IPv4 addresses, comma-separated</string>
     <string name="share_group_warning">Start each selected receiver first. Only permitted app playback is encrypted and shared with these local devices for up to 30 seconds. Use one fresh key shared privately with this group. Receiver playout requires an authenticated clock. Stop using the foreground notification. Already transmitted buffered audio may briefly finish playing.</string>
+    <string name="pair_scan">Scan receiver QR</string>
+    <string name="pair_scan_prompt">Scan the SurSound receiver’s private pairing QR.</string>
+    <string name="pair_review">Check the receiver address. Scanning does not start sharing. Continue only if you trust this receiver.</string>
+    <string name="pair_tone_review">QR pairing ready. Verify the receiver address and press Send test tone to start.</string>
+    <string name="pair_clear">Clear QR pairing</string>
+    <string name="pair_scan_failed">Unable to open QR scanner. Use manual pairing instead.</string>
+    <string name="pair_invalid">Invalid, expired or unsupported receiver QR. Start a new receiver or pair manually.</string>
+    <string name="pair_expired">QR pairing expired or is not valid for this mode. Scan a fresh v1 receiver QR.</string>
 </resources>

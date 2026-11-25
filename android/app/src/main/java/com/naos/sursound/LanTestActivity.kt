@@ -3,6 +3,7 @@ package com.naos.sursound
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.os.Bundle
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
@@ -30,6 +31,10 @@ class LanTestActivity : Activity() {
     private lateinit var discovery: PeerDiscovery
     private lateinit var discoveredPeers: LinearLayout
     private lateinit var discover: Button
+    private lateinit var scan: Button
+    private lateinit var clearPairing: Button
+    private var scannedTicket: PairingTicket? = null
+    private var scanRequested = false
     private var receiving = false
 
     private val refresh = object : Runnable {
@@ -51,6 +56,7 @@ class LanTestActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        scanRequested = savedInstanceState?.getBoolean("scanRequested") ?: false
         val padding = (24 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -105,7 +111,23 @@ class LanTestActivity : Activity() {
             text = "Find local receivers (15 s)"
             setOnClickListener { discovery.browse() }
         }
-        listOf(peer, key, generate, discover, discoveredPeers, receive, send, groupSend, stop, status).forEach { root.addView(it) }
+        scan = Button(this).apply {
+            setText(R.string.pair_scan)
+            setOnClickListener {
+                if (session != null) return@setOnClickListener
+                clearScannedPairing()
+                scanRequested = true
+                try { PairingScan.launch(this@LanTestActivity) } catch (_: RuntimeException) {
+                    scanRequested = false
+                    status.setText(R.string.pair_scan_failed)
+                }
+            }
+        }
+        clearPairing = Button(this).apply {
+            setText(R.string.pair_clear)
+            setOnClickListener { clearScannedPairing(); status.text = "Ready" }
+        }
+        listOf(peer, key, generate, scan, clearPairing, discover, discoveredPeers, receive, send, groupSend, stop, status).forEach { root.addView(it) }
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         updateButtons()
     }
@@ -113,19 +135,58 @@ class LanTestActivity : Activity() {
     override fun onStart() {
         super.onStart()
         main.post(refresh)
+        if (session == null && scannedTicket == null && !scanRequested) discovery.browse()
     }
 
     override fun onStop() {
         main.removeCallbacks(refresh)
         stopTest()
         discovery.close()
+        scannedTicket = null
         key.text.clear()
         super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("scanRequested", scanRequested)
+        super.onSaveInstanceState(outState)
+    }
+
+    @Deprecated("Used for local QR scan in the diagnostic Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PairingScan.REQUEST || !scanRequested) return
+        scanRequested = false
+        if (resultCode != RESULT_OK || session != null) return
+        val ticket = PairingScan.parse(resultCode, data)
+        if (ticket == null) {
+            status.setText(R.string.pair_invalid)
+        } else {
+            discovery.stopBrowsing()
+            scannedTicket = ticket
+            peer.setText(ticket.peer)
+            key.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            key.setText(ticket.keyHex)
+            status.setText(R.string.pair_tone_review)
+        }
+        updateButtons()
+    }
+
+    private fun clearScannedPairing() {
+        scannedTicket = null
+        peer.text.clear()
+        key.text.clear()
+        updateButtons()
     }
 
     private fun startTest(sender: Boolean, group: Boolean = false) {
         if (session != null) return
         try {
+            scannedTicket?.let {
+                require(sender && !group && it.isValidAt(System.currentTimeMillis() / 1000)) {
+                    getString(R.string.pair_expired)
+                }
+            }
             val addresses = if (group) peer.text.toString().split(',').map { LanPacketCodec.localPeer(it) }
                 else listOf(LanPacketCodec.localPeer(peer.text.toString()))
             require(addresses.size in 1..4 && addresses.distinct().size == addresses.size) {
@@ -141,6 +202,7 @@ class LanTestActivity : Activity() {
                     else -> LanTestSession.receiver(addresses.single(), bytes)
                 }
             } finally { bytes.fill(0) }
+            scannedTicket = null
             key.text.clear()
             status.text = "Starting"
         } catch (e: IllegalArgumentException) {
@@ -161,13 +223,20 @@ class LanTestActivity : Activity() {
 
     private fun updateButtons() {
         val ready = session == null
-        peer.isEnabled = ready
-        key.isEnabled = ready
-        generate.isEnabled = ready
-        discover.isEnabled = ready
+        val manual = ready && scannedTicket == null
+        // Manual Generate must remain readable so owners can share the key privately.
+        val keyInputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            (if (scannedTicket != null) InputType.TYPE_TEXT_VARIATION_PASSWORD else 0)
+        if (key.inputType != keyInputType) key.inputType = keyInputType
+        peer.isEnabled = manual
+        key.isEnabled = manual
+        generate.isEnabled = manual
+        discover.isEnabled = manual
+        scan.isEnabled = ready
+        clearPairing.isEnabled = ready && scannedTicket != null
         send.isEnabled = ready
-        groupSend.isEnabled = ready
-        receive.isEnabled = ready
+        groupSend.isEnabled = manual
+        receive.isEnabled = manual
         stop.isEnabled = !ready
     }
 

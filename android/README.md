@@ -40,3 +40,7 @@ With fresh shared test key and 1–4 comma-separated receiver IPv4 addresses, se
 
 ## Captured app-audio group diagnostic
 Start all selected receivers with the sender IP and the same fresh group key. Select **Share permitted app audio to group (30 s)**, enter 1–4 distinct comma-separated receiver IPs, and grant Android consent. This uses the v2 shared timeline for permitted app playback only. The bounded capture queue reserves slots before dropping blocks, and expired slots are discarded. Use the visible stop notification; transmitted buffered audio may briefly finish playing. Verify on physical devices and record results in [Issue #30](https://github.com/Naos2w/SurSound/issues/30) and [Issue #31](https://github.com/Naos2w/SurSound/issues/31). No physical synchronization or compatibility guarantee yet.
+
+## Private receiver QR pairing
+
+For a Windows v1 receiver launched with --discover --qr, open the permitted app-audio share dialog or LAN test screen. The receiver list is browsed automatically for a short window; use **Scan receiver QR** to fill the single receiver IP and short-lived 128-bit key. Camera permission is requested only when scanning. Verify the address and explicitly initiate the tone or proceed through Android system capture consent. No automatic audio capture on scan. An expired/invalid QR, cancellation or camera denial does not start a session. Use manual IP/key entry if scanning/discovery fails. Group mode continues to require explicit manual pairing. Never share screenshots of private QR offers.
