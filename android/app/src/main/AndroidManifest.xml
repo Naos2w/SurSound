@@ -14,13 +14,21 @@
         android:allowAudioPlaybackCapture="false"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- These programmatic, scrollable diagnostic screens keep their in-memory
+             form/session on size-only changes. Do not save keys in a Bundle or lock rotation. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".LanTestActivity" android:exported="false" />
+        <activity
+            android:name=".LanTestActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false" />
         <service android:name=".CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
