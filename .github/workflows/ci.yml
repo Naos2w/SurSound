@@ -27,6 +27,7 @@ jobs:
             test -s "$file"
           done
           git diff --check HEAD
+          python3 .github/scripts/verify-android-rotation.py --self-test
           echo "Bootstrap structure verified; see android-build for application checks."
       - uses: actions/setup-python@v5
         with:
@@ -67,6 +68,7 @@ jobs:
           set -euo pipefail
           apk="android/app/build/outputs/apk/debug/app-debug.apk"
           python3 .github/scripts/verify-android-apk.py "$apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | python3 .github/scripts/verify-android-rotation.py
           badging="$("$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$apk")"
           [[ "$badging" == *"versionCode='$SURSOUND_BUILD_CODE'"* ]]
           [[ "$badging" == *"versionName='$SURSOUND_BUILD_NAME'"* ]]

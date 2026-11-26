@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.os.Bundle
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
@@ -130,6 +131,12 @@ class LanTestActivity : Activity() {
         listOf(peer, key, generate, scan, clearPairing, discover, discoveredPeers, receive, send, groupSend, stop, status).forEach { root.addView(it) }
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         updateButtons()
+    }
+
+    /** Size/orientation changes are handled in place; actual navigation still uses onStop. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        window.decorView.requestLayout()
     }
 
     override fun onStart() {

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -92,6 +93,12 @@ class MainActivity : Activity() {
         root.addView(status)
         setContentView(ScrollView(this).apply { addView(root); fitsSystemWindows = true })
         render()
+    }
+
+    /** Size/orientation changes are handled in place; actual navigation still uses onStop. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        window.decorView.requestLayout()
     }
 
     override fun onStart() {
@@ -212,7 +219,7 @@ class MainActivity : Activity() {
                 group -> R.string.share_group_warning
                 else -> R.string.share_warning
             })
-            .setView(fields)
+            .setView(ScrollView(this).apply { addView(fields); isFillViewport = false })
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(R.string.share_continue, null)
             .apply { if (!group) setNeutralButton(R.string.pair_scan, null) }
