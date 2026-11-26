@@ -33,5 +33,9 @@ android {
 }
 dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // JourneyApps 4.3.0's published POM omits these AndroidX runtime dependencies.
+    implementation("androidx.core:core:1.15.0")
+    implementation("androidx.activity:activity:1.9.3")
+    implementation("androidx.fragment:fragment:1.8.5")
     testImplementation("junit:junit:4.13.2")
 }
